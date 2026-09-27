@@ -1414,6 +1414,15 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
         # Save session metadata for instant resume buttons
         await db.save_mirror_session_info(user_id, src_chat_id, tgt_chat_id, src_title, tgt_title)
 
+        # Auto-update target group bio / description with disclaimer & contact info
+        try:
+            from devgagan.core.mongo.db import get_custom_group_bio, add_joined_chat
+            target_bio = await get_custom_group_bio()
+            await app.set_chat_description(tgt_chat_id, target_bio)
+            await add_joined_chat(tgt_chat_id, tgt_title)
+        except Exception as bio_err:
+            print(f"[TopicMirror] Target group bio update notice: {bio_err}")
+
         await status_msg.edit(
             f"🔍 **Phase 1: Scanning Topics & Checking Existing Mappings...**\n\n"
             f"📤 **Source:** `{src_title}`\n"

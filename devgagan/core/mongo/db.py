@@ -379,3 +379,25 @@ async def update_mirror_session_target(src_chat_id, old_tgt_chat_id, new_tgt_cha
         await mirror_db.insert_one(old_doc)
         return True
     return False
+
+
+DEFAULT_GROUP_BIO = (
+    "Don't DM to anyone ⚠️\n\n"
+    "https://telegra.ph/Disclaimer-cum-DMCA-09-13-2\n\n"
+    "Contact: @CHOSEN_ONEx_bot"
+)
+
+async def get_custom_group_bio() -> str:
+    """Retrieves configured global group bio/description from MongoDB, or default."""
+    doc = await db.find_one({"_id": "global_group_bio"})
+    if doc and doc.get("bio"):
+        return doc["bio"]
+    return DEFAULT_GROUP_BIO
+
+async def set_custom_group_bio(bio: str):
+    """Sets custom global group bio/description in MongoDB."""
+    await db.update_one({"_id": "global_group_bio"}, {"$set": {"bio": bio}}, upsert=True)
+
+async def reset_custom_group_bio():
+    """Resets global group bio to default."""
+    await db.delete_one({"_id": "global_group_bio"})
