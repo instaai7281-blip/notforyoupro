@@ -24,8 +24,6 @@ A high-performance, enterprise-grade Telegram Bot built with Pyrogram and Teleth
 ### 🎨 Advanced Custom Branding & Cleaners
 - **Dynamic Blockquote Formatting**: Converts captions and branding tags into clean native Telegram blockquote boxes.
 - **Filename Sanitization**: Removes all `@usernames`, `@channels`, and promotional signatures from filenames across all formats (Videos, PDFs, Documents, Audios).
-- **Universal Star Extension**: Appends custom star markers (e.g. `📙 Document 〘Batch〙 ⚝.pdf`, `Video Title ⚝.mp4`).
-- **Bracket Stylization**: Automatically converts `()`, `[]`, `{}` to clean `〙〘`.
 - **Custom Watermarking & Thumbnails**: Support for PDF watermarking and custom/extracted video thumbnail generation.
 
 ### 💎 Monetization & User Management
@@ -61,6 +59,15 @@ cd <repo-folder>
 pip install -r requirements.txt
 python -m devgagan
 ```
+
+---
+
+## 📋 Terms & Conditions
+
+1. **Educational & Personal Use Only**: This software is developed strictly for educational, backup, and personal utility purposes.
+2. **Compliance**: Users and deployers are solely responsible for ensuring compliance with Telegram's Terms of Service and applicable local copyright laws.
+3. **No Resale or Redistribution**: Reselling, leaking, or unauthorized public redistribution of this proprietary repository is strictly prohibited.
+4. **As-Is Warranty**: The software is provided "as-is" without warranties of any kind regarding third-party API changes or Telegram service interruptions.
 
 ---
 
