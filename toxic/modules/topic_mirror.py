@@ -23,7 +23,7 @@ from pyrogram.errors import FloodWait, RPCError, ChatAdminRequired, ChannelInval
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from toxic import app, get_client, pro_clients
 from config import API_ID, API_HASH, OWNER_ID, LOG_GROUP, THUMBNAIL_DIR
-from toxic.core.func import chk_user, humanbytes, TimeFormatter, video_metadata, thumbnail, add_pdf_watermark, screenshot, optimize_thumbnail
+from toxic.core.func import chk_user, chk_mirror_user, humanbytes, TimeFormatter, video_metadata, thumbnail, add_pdf_watermark, screenshot, optimize_thumbnail
 from toxic.core.mongo import db
 from toxic.core.get_func import get_user_branding_tag, format_caption_to_html, clean_surrogates, get_user_spoiler_preference
 
@@ -995,8 +995,8 @@ async def skip_topic_callback(_, query: CallbackQuery):
 @app.on_callback_query(filters.regex(r"^tm_opt_(-?\d+)_(-?\d+)$"))
 async def session_options_callback(_, query: CallbackQuery):
     user_id = query.from_user.id
-    if await chk_user(None, user_id) != 0:
-        await query.answer("🔒 Topic Mirroring is only available for Premium users!", show_alert=True)
+    if await chk_mirror_user(user_id) != 0:
+        await query.answer("🔒 Topic Mirroring requires the ₹299 Topic Mirror Plan! Use /plans.", show_alert=True)
         return
     match = re.search(r"^tm_opt_(-?\d+)_(-?\d+)$", query.data)
     src_chat_id = int(match.group(1))
@@ -1024,8 +1024,8 @@ async def session_options_callback(_, query: CallbackQuery):
 @app.on_callback_query(filters.regex(r"^tm_edittgt_(-?\d+)_(-?\d+)$"))
 async def edit_target_callback(_, query: CallbackQuery):
     user_id = query.from_user.id
-    if await chk_user(None, user_id) != 0:
-        await query.answer("🔒 Topic Mirroring is only available for Premium users!", show_alert=True)
+    if await chk_mirror_user(user_id) != 0:
+        await query.answer("🔒 Topic Mirroring requires the ₹299 Topic Mirror Plan! Use /plans.", show_alert=True)
         return
     match = re.search(r"^tm_edittgt_(-?\d+)_(-?\d+)$", query.data)
     src_chat_id = int(match.group(1))
@@ -1081,8 +1081,8 @@ async def edit_target_callback(_, query: CallbackQuery):
 @app.on_callback_query(filters.regex(r"^tm_delsess_(-?\d+)_(-?\d+)$"))
 async def delete_single_session_callback(_, query: CallbackQuery):
     user_id = query.from_user.id
-    if await chk_user(None, user_id) != 0:
-        await query.answer("🔒 Topic Mirroring is only available for Premium users!", show_alert=True)
+    if await chk_mirror_user(user_id) != 0:
+        await query.answer("🔒 Topic Mirroring requires the ₹299 Topic Mirror Plan!", show_alert=True)
         return
     match = re.search(r"^tm_delsess_(-?\d+)_(-?\d+)$", query.data)
     src_chat_id = int(match.group(1))
@@ -1109,8 +1109,8 @@ async def delete_single_session_callback(_, query: CallbackQuery):
 @app.on_callback_query(filters.regex(r"^tm_hub$"))
 async def back_to_hub_callback(_, query: CallbackQuery):
     user_id = query.from_user.id
-    if await chk_user(None, user_id) != 0:
-        await query.answer("🔒 Premium only!", show_alert=True)
+    if await chk_mirror_user(user_id) != 0:
+        await query.answer("🔒 Topic Mirror Plan required!", show_alert=True)
         return
     saved_sessions = await db.get_user_mirror_sessions(user_id)
     if saved_sessions:
@@ -1131,8 +1131,8 @@ async def back_to_hub_callback(_, query: CallbackQuery):
 @app.on_callback_query(filters.regex(r"^tm_res_(-?\d+)_(-?\d+)$"))
 async def resume_session_callback(_, query: CallbackQuery):
     user_id = query.from_user.id
-    if await chk_user(None, user_id) != 0:
-        await query.answer("🔒 Topic Mirroring is only available for Premium users! Upgrade via /plans.", show_alert=True)
+    if await chk_mirror_user(user_id) != 0:
+        await query.answer("🔒 Topic Mirroring requires the ₹299 Topic Mirror Plan! Upgrade via /plans.", show_alert=True)
         return
         
     match = re.search(r"^tm_res_(-?\d+)_(-?\d+)$", query.data)
@@ -1161,8 +1161,8 @@ async def resume_session_callback(_, query: CallbackQuery):
 @app.on_callback_query(filters.regex(r"^tm_new$"))
 async def new_mirror_callback(_, query: CallbackQuery):
     user_id = query.from_user.id
-    if await chk_user(None, user_id) != 0:
-        await query.answer("🔒 Topic Mirroring is only available for Premium users! Upgrade via /plans.", show_alert=True)
+    if await chk_mirror_user(user_id) != 0:
+        await query.answer("🔒 Topic Mirroring requires the ₹299 Topic Mirror Plan! Upgrade via /plans.", show_alert=True)
         return
     if user_id in active_mirrors and isinstance(active_mirrors[user_id], dict) and active_mirrors[user_id].get("running"):
         await query.answer("⚠️ A mirror task is already running!", show_alert=True)
@@ -1174,8 +1174,8 @@ async def new_mirror_callback(_, query: CallbackQuery):
 @app.on_callback_query(filters.regex(r"^tm_clear$"))
 async def clear_sessions_callback(_, query: CallbackQuery):
     user_id = query.from_user.id
-    if await chk_user(None, user_id) != 0:
-        await query.answer("🔒 Topic Mirroring is only available for Premium users! Upgrade via /plans.", show_alert=True)
+    if await chk_mirror_user(user_id) != 0:
+        await query.answer("🔒 Topic Mirroring requires the ₹299 Topic Mirror Plan! Upgrade via /plans.", show_alert=True)
         return
     saved = await db.get_user_mirror_sessions(user_id)
     for s in saved:
@@ -1192,17 +1192,19 @@ async def clear_sessions_callback(_, query: CallbackQuery):
 
 async def start_new_mirror_flow(user_id: int, message, is_callback: bool = False):
     """Interactive flow to configure and launch a new topic mirror session."""
-    # Check Premium/Owner Authorization
-    if await chk_user(None, user_id) != 0:
+    # Check Topic Mirror Authorization
+    if await chk_mirror_user(user_id) != 0:
         err_msg = (
-            "🔒 **Access Denied (Premium Feature Only)**\n\n"
-            "Topic Mirroring is exclusively reserved for **Premium Members & Admins**.\n\n"
-            "Use `/plans` to upgrade your subscription!"
+            "<blockquote>🔒 <b>Access Denied — Topic Mirror Plan Required</b>\n\n"
+            "The <b>Topic Mirroring & Auto-Folder/Topic Creation</b> feature is exclusively reserved for users with the <b>Topic Mirror Plan (₹299/month)</b>.\n\n"
+            "Standard Premium subscribers & Free users do not have access to topic cloning.\n\n"
+            "💬 <b>Contact Admin:</b> @CHOSEN_ONEx_bot to purchase or upgrade your plan!</blockquote>"
         )
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Buy Topic Mirror Plan (₹299)", url="https://t.me/CHOSEN_ONEx_bot")]])
         if is_callback:
-            await app.send_message(user_id, err_msg)
+            await app.send_message(user_id, err_msg, parse_mode=ParseMode.HTML, reply_markup=kb)
         else:
-            await message.reply(err_msg)
+            await message.reply(err_msg, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
 
     # STEP 1: Ask for Source Message/Topic Link
@@ -1303,13 +1305,16 @@ async def topic_mirror_cmd(client, message):
 
     user_id = message.from_user.id
 
-    # Check Premium/Owner Authorization
-    if await chk_user(message, user_id) != 0:
-        await message.reply(
-            "🔒 **Access Denied (Premium Feature Only)**\n\n"
-            "Topic Mirroring is exclusively reserved for **Premium Members & Admins**.\n\n"
-            "Use `/plans` to upgrade your subscription and unlock high-speed topic cloning!"
+    # Check Topic Mirror Authorization
+    if await chk_mirror_user(user_id) != 0:
+        err_msg = (
+            "<blockquote>🔒 <b>Access Denied — Topic Mirror Plan Required</b>\n\n"
+            "The <b>Topic Mirroring & Auto-Folder/Topic Creation</b> feature is exclusively reserved for users with the <b>Topic Mirror Plan (₹299/month)</b>.\n\n"
+            "Standard Premium subscribers & Free users do not have access to topic cloning.\n\n"
+            "💬 <b>Contact Admin:</b> @CHOSEN_ONEx_bot to purchase or upgrade your plan!</blockquote>"
         )
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Buy Topic Mirror Plan (₹299)", url="https://t.me/CHOSEN_ONEx_bot")]])
+        await message.reply(err_msg, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
 
     if user_id in active_mirrors and isinstance(active_mirrors[user_id], dict) and active_mirrors[user_id].get("running"):
@@ -1332,15 +1337,20 @@ async def topic_mirror_cmd(client, message):
 
 async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mirror_all_topics: bool = True, detected_topic_id: int = None, status_msg=None):
     """Core execution engine for topic mirroring with instant resume and rapid extraction."""
-    # Check Premium/Owner Authorization
-    if await chk_user(None, user_id) != 0:
+    # Check Topic Mirror Authorization
+    if await chk_mirror_user(user_id) != 0:
+        err_msg = (
+            "<blockquote>🔒 <b>Access Denied — Topic Mirror Plan Required</b>\n\n"
+            "You need an active <b>Topic Mirror Plan (₹299/month)</b> to run Topic Mirroring. Contact @CHOSEN_ONEx_bot to purchase access.</blockquote>"
+        )
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Buy Topic Mirror Plan (₹299)", url="https://t.me/CHOSEN_ONEx_bot")]])
         if status_msg:
             try:
-                await status_msg.edit("🔒 **Access Denied:** You need an active premium plan to use Topic Mirror.")
+                await status_msg.edit(err_msg, parse_mode=ParseMode.HTML, reply_markup=kb)
             except Exception:
                 pass
         else:
-            await app.send_message(user_id, "🔒 **Access Denied:** You need an active premium plan to use Topic Mirror.")
+            await app.send_message(user_id, err_msg, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
 
     control_kb = get_mirror_keyboard(user_id)

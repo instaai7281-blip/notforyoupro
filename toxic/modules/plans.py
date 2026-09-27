@@ -113,37 +113,205 @@ async def myplan(client, message):
     user_id = message.from_user.id
     user = message.from_user.mention
     data = await plans_db.check_premium(user_id)  
+    mirror_data = await plans_db.check_mirror_premium(user_id)
+    
+    current_time = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
+    
+    status_lines = [
+        f"✨ 🖤 **𝗦𝗧𝗢𝗟𝗘𝗡 𝗛𝗔𝗣𝗣𝗜𝗡𝗘𝗦𝗦** 🖤 ✨",
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"👑 **YOUR SUBSCRIPTION STATUS** 👑",
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"👤 **User:** {user}",
+        f"🆔 **ID:** `{user_id}`\n"
+    ]
+    
+    has_any = False
+    
     if data and data.get("expire_date"):
+        has_any = True
         expiry = data.get("expire_date")
         expiry_ist = expiry.astimezone(pytz.timezone("Asia/Kolkata"))
-        expiry_str_in_ist = expiry_ist.strftime("%d-%m-%Y %I:%M:%S %p")            
-        
-        current_time = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
+        expiry_str = expiry_ist.strftime("%d-%m-%Y %I:%M:%S %p")
         time_left = expiry_ist - current_time
-            
         days = time_left.days
         hours, remainder = divmod(time_left.seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-            
-        time_left_str = f"{days} days, {hours} hours, {minutes} minutes"
-        await message.reply_text(
-            f"✨ 🖤 **𝗦𝗧𝗢𝗟𝗘𝗡 𝗛𝗔𝗣𝗣𝗜𝗡𝗘𝗦𝗦** 🖤 ✨\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👑 **YOUR PREMIUM STATUS** 👑\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👤 **User:** {user}\n"
-            f"🆔 **ID:** `{user_id}`\n"
-            f"⏰ **Time Left:** `{time_left_str}`\n"
-            f"⌛ **Expiry:** `{expiry_str_in_ist}` (IST)\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🚀 _Thank you for being a premium member!_"
-        )   
+        minutes, _ = divmod(remainder, 60)
+        status_lines.append(f"⚡ **Standard Premium:** ✅ Active")
+        status_lines.append(f"⏳ **Standard Expiry:** `{expiry_str}` IST ({days}d {hours}h {minutes}m left)\n")
     else:
+        status_lines.append(f"⚡ **Standard Premium:** ❌ Inactive\n")
+        
+    if mirror_data and mirror_data.get("expire_date"):
+        has_any = True
+        m_expiry = mirror_data.get("expire_date")
+        m_expiry_ist = m_expiry.astimezone(pytz.timezone("Asia/Kolkata"))
+        m_expiry_str = m_expiry_ist.strftime("%d-%m-%Y %I:%M:%S %p")
+        m_time_left = m_expiry_ist - current_time
+        m_days = m_time_left.days
+        m_hours, m_remainder = divmod(m_time_left.seconds, 3600)
+        m_minutes, _ = divmod(m_remainder, 60)
+        status_lines.append(f"🎛️ **Topic Mirror Plan (₹299):** ✅ Active")
+        status_lines.append(f"⏳ **Mirror Expiry:** `{m_expiry_str}` IST ({m_days}d {m_hours}h {m_minutes}m left)\n")
+    else:
+        status_lines.append(f"🎛️ **Topic Mirror Plan (₹299):** ❌ Inactive\n")
+        
+    status_lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    if has_any:
+        status_lines.append("🚀 _Thank you for being a valued subscriber!_")
+    else:
+        status_lines.append("Subscribe via `/plans` to unlock premium features & topic cloning! 🚀")
+        
+    await message.reply_text("\n".join(status_lines))
+
+
+@app.on_message(filters.command("addmirror") & filters.user(OWNER_ID))
+async def give_mirror_premium_cmd_handler(client, message):
+    if len(message.command) == 4:
+        time_zone = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
+        current_time = time_zone.strftime("%d-%m-%Y %I:%M:%S %p")
+        try:
+            user_id = int(message.command[1])
+        except ValueError:
+            await message.reply_text("❌ **Invalid user ID.** Please provide a numeric ID.")
+            return
+
+        user_mention = f"User (`{user_id}`)"
+        user_name = "User"
+        try:
+            user = await client.get_users(user_id)
+            if user:
+                user_mention = user.mention
+                user_name = user.mention
+        except Exception:
+            pass
+
+        time_val = message.command[2] + " " + message.command[3]
+        seconds = await get_seconds(time_val)
+        if seconds > 0:
+            expiry_time = datetime.datetime.now() + datetime.timedelta(seconds=seconds)  
+            await plans_db.add_mirror_premium(user_id, expiry_time)  
+            data = await plans_db.check_mirror_premium(user_id)
+            expiry = data.get("expire_date")   
+            expiry_str_in_ist = expiry.astimezone(pytz.timezone("Asia/Kolkata")).strftime("%d-%m-%Y %I:%M:%S %p")         
+            await message.reply_text(
+                f"✨ 🖤 **𝗦𝗧𝗢𝗟𝗘𝗡 𝗛𝗔𝗣𝗣𝗜𝗡𝗘𝗦𝗦** 🖤 ✨\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🎛️ **TOPIC MIRROR PLAN ACTIVATED (₹299)** 🎛️\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 **User:** {user_mention}\n"
+                f"🆔 **ID:** `{user_id}`\n"
+                f"⏳ **Duration:** `{time_val}`\n"
+                f"📅 **Start:** `{current_time}` (IST)\n"
+                f"⌛ **Expiry:** `{expiry_str_in_ist}` (IST)\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"✨ ⚝_", 
+                disable_web_page_preview=True
+            )
+            try:
+                await client.send_message(
+                    chat_id=user_id,
+                    text=(
+                        f"🎉 **CONGRATULATIONS! TOPIC MIRROR PLAN ACTIVATED** 🎉\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"👋 Hey {user_name},\n"
+                        f"Your account has been upgraded to **Topic Mirror Plan (₹299/month)**! 🎛️\n\n"
+                        f"⚡ **UNLOCKED FEATURES:**\n"
+                        f"  • Forum Topic Mirroring (/mirror) 📁\n"
+                        f"  • Automatic Topic Creation & Mapping 🔄\n"
+                        f"  • Auto Group Bio & Disclaimer Tagging 🏷️\n"
+                        f"  • High-Speed Resume Checkpoints 🚀\n\n"
+                        f"📈 **PLAN DETAILS:**\n"
+                        f"  • **Duration:** `{time_val}`\n"
+                        f"  • **Expiry Time:** `{expiry_str_in_ist}` (IST)\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🚀 _Use /mirror to start cloning topics now!_"
+                    ), 
+                    disable_web_page_preview=True              
+                )
+            except Exception:
+                pass
+        else:
+            await message.reply_text("Invalid time format. Example: `/addmirror 123456789 1 month` or `30 days`")
+    else:
+        await message.reply_text("Usage: `/addmirror user_id duration` (e.g. `/addmirror 123456789 1 month` or `30 days`)")
+
+
+@app.on_message(filters.command("remmirror") & filters.user(OWNER_ID))
+async def remove_mirror_premium_cmd(client, message):
+    if len(message.command) == 2:
+        try:
+            user_id = int(message.command[1])
+        except ValueError:
+            await message.reply_text("❌ **Invalid user ID.** Please provide a numeric ID.")
+            return
+
+        user_mention = f"User (`{user_id}`)"
+        try:
+            user = await client.get_users(user_id)
+            if user:
+                user_mention = user.mention
+        except Exception:
+            pass
+
+        await plans_db.remove_mirror_premium(user_id)
         await message.reply_text(
-            f"👋 Hey {user},\n\n"
-            f"❌ **You do not have any active Premium plan.**\n\n"
-            f"Subscribe to premium to enjoy maximum speeds, custom thumbnails, and more! 🚀"
+            f"🗑️ **TOPIC MIRROR ACCESS REVOKED**\n\n"
+            f"👤 **User:** {user_mention}\n"
+            f"🆔 **ID:** `{user_id}`\n"
+            f"❌ **Status:** Topic Mirror plan access removed."
         )
+    else:
+        await message.reply_text("Usage: `/remmirror user_id`")
+
+
+@app.on_message(filters.command("checkmirror") & filters.user(OWNER_ID))
+async def check_mirror_premium_cmd(client, message):
+    if len(message.command) == 2:
+        try:
+            user_id = int(message.command[1])
+        except ValueError:
+            await message.reply_text("❌ **Invalid user ID.** Please provide a numeric ID.")
+            return
+
+        user_mention = f"User (`{user_id}`)"
+        try:
+            user = await client.get_users(user_id)
+            if user:
+                user_mention = user.mention
+        except Exception:
+            pass
+
+        data = await plans_db.check_mirror_premium(user_id)  
+        if data and data.get("expire_date"):
+            expiry = data.get("expire_date") 
+            expiry_ist = expiry.astimezone(pytz.timezone("Asia/Kolkata"))
+            expiry_str_in_ist = expiry_ist.strftime("%d-%m-%Y %I:%M:%S %p")            
+            
+            current_time = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
+            time_left = expiry_ist - current_time
+            
+            days = time_left.days
+            hours, remainder = divmod(time_left.seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            
+            time_left_str = f"{days} days, {hours} hours, {minutes} minutes"
+            await message.reply_text(
+                f"🎛️ 🖤 **TOPIC MIRROR PLAN DETAILS** 🖤 🎛️\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 **User:** {user_mention}\n"
+                f"🆔 **ID:** `{user_id}`\n"
+                f"⏰ **Remaining:** `{time_left_str}`\n"
+                f"⌛ **Expiry:** `{expiry_str_in_ist}` (IST)\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            )
+        else:
+            await message.reply_text(
+                f"❌ **No Topic Mirror Plan Data Found!**\n\n"
+                f"User `{user_id}` does not have an active Topic Mirror Plan (₹299)."
+            )
+    else:
+        await message.reply_text("Usage: `/checkmirror user_id`")
         
 
 

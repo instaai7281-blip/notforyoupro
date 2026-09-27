@@ -197,30 +197,28 @@ async def terms(client, message):
 @app.on_message(filters.command("plans") & filters.private)
 async def plan(client, message):
     plan_text = (
-        "<blockquote><b>💎 TOXIC BOT PRO — PREMIUM MEMBERSHIP 💎</b></blockquote>\n\n"
+        "<blockquote><b>💎 TOXIC BOT PRO — SUBSCRIPTION PLANS 💎</b></blockquote>\n\n"
         "<b>🔥 Unlock Unlimited Power & High-Speed Extraction:</b>\n\n"
-        "<blockquote><b>✨ PREMIUM FEATURES & BENEFITS:</b>\n"
-        "• <b>⚡ Zero Ad Shortlinks:</b> No captchas, no ads, direct downloads!\n"
-        "• <b>📁 Ultra Bulk Batch:</b> Queue up to <b>5000 files</b> in one batch!\n"
-        "• <b>🎛️ Forum Topic Mirror (/mirror):</b> Auto-create & map topics instantly!\n"
-        "• <b>⏳ 0s Cooldown:</b> No waiting time or delays between downloads!\n"
-        "• <b>🚀 Max Multi-Client Speed:</b> High-speed 4GB Telethon uploader!\n"
-        "• <b>📙 Clean Filenames:</b> Auto-sanitization & blockquote branding!</blockquote>\n\n"
-        "<blockquote><b>💰 SUBSCRIPTION PLANS & PRICING:</b>\n"
+        "<blockquote><b>✨ STANDARD PREMIUM PLANS:</b>\n"
         "• <b>🥉 7 Days Plan:</b> ₹49  |  $0.70 USDT\n"
         "• <b>🥈 15 Days Plan:</b> ₹89  |  $1.20 USDT\n"
         "• <b>🥇 30 Days Plan:</b> ₹149  |  $1.90 USDT 🚀 <i>(Best Value)</i>\n"
-        "• <b>💎 3 Months Plan:</b> ₹399  |  $5.00 USDT</blockquote>\n\n"
+        "• <b>💎 3 Months Plan:</b> ₹399  |  $5.00 USDT\n"
+        "<i>Includes: High-Speed Batch (/batch up to 5000 files), 0s Cooldown, Custom Thumbs & Watermarks!</i></blockquote>\n\n"
+        "<blockquote><b>🎛️ SPECIAL TOPIC MIRROR PLAN:</b>\n"
+        "• <b>👑 Topic Mirroring & Auto-Folder Plan:</b> ₹299 / month\n"
+        "<i>Includes: Forum Topic Cloning (/mirror), Auto Topic Creation & Mapping, Instant Resume Checkpoints, Auto Group Bio & Disclaimer Tagging!</i>\n"
+        "⚠️ <b>Note:</b> Topic Mirroring is only accessible with this dedicated ₹299 plan. Standard premium users must purchase this plan to use topic cloning.</blockquote>\n\n"
         "<blockquote><b>💳 ACCEPTED PAYMENT METHODS:</b>\n"
         "• UPI (GPay / PhonePe / Paytm)\n"
         "• Amazon Gift Cards\n"
         "• Crypto (USDT BEP20/TRC20)</blockquote>\n\n"
-        "📲 <b>To Buy Premium Access:</b> Click <b>Contact Admin</b> below!"
+        "📲 <b>To Buy Access:</b> Click <b>Contact Admin</b> below!"
     )
    
     buttons = InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("💬 Buy Premium / Contact Admin", url="https://t.me/SRC_PRO_BOT")],
+            [InlineKeyboardButton("💬 Buy Plan / Contact Admin", url="https://t.me/CHOSEN_ONEx_bot")],
             [InlineKeyboardButton("📜 Terms & Conditions", callback_data="see_terms")],
         ]
     )
@@ -230,30 +228,28 @@ async def plan(client, message):
 @app.on_callback_query(filters.regex("see_plan"))
 async def see_plan(client, callback_query):
     plan_text = (
-        "<blockquote><b>💎 TOXIC BOT PRO — PREMIUM MEMBERSHIP 💎</b></blockquote>\n\n"
+        "<blockquote><b>💎 TOXIC BOT PRO — SUBSCRIPTION PLANS 💎</b></blockquote>\n\n"
         "<b>🔥 Unlock Unlimited Power & High-Speed Extraction:</b>\n\n"
-        "<blockquote><b>✨ PREMIUM FEATURES & BENEFITS:</b>\n"
-        "• <b>⚡ Zero Ad Shortlinks:</b> No captchas, no ads, direct downloads!\n"
-        "• <b>📁 Ultra Bulk Batch:</b> Queue up to <b>5000 files</b> in one batch!\n"
-        "• <b>🎛️ Forum Topic Mirror (/mirror):</b> Auto-create & map topics instantly!\n"
-        "• <b>⏳ 0s Cooldown:</b> No waiting time or delays between downloads!\n"
-        "• <b>🚀 Max Multi-Client Speed:</b> High-speed 4GB Telethon uploader!\n"
-        "• <b>📙 Clean Filenames:</b> Auto-sanitization & blockquote branding!</blockquote>\n\n"
-        "<blockquote><b>💰 SUBSCRIPTION PLANS & PRICING:</b>\n"
+        "<blockquote><b>✨ STANDARD PREMIUM PLANS:</b>\n"
         "• <b>🥉 7 Days Plan:</b> ₹49  |  $0.70 USDT\n"
         "• <b>🥈 15 Days Plan:</b> ₹89  |  $1.20 USDT\n"
         "• <b>🥇 30 Days Plan:</b> ₹149  |  $1.90 USDT 🚀 <i>(Best Value)</i>\n"
-        "• <b>💎 3 Months Plan:</b> ₹399  |  $5.00 USDT</blockquote>\n\n"
+        "• <b>💎 3 Months Plan:</b> ₹399  |  $5.00 USDT\n"
+        "<i>Includes: High-Speed Batch (/batch up to 5000 files), 0s Cooldown, Custom Thumbs & Watermarks!</i></blockquote>\n\n"
+        "<blockquote><b>🎛️ SPECIAL TOPIC MIRROR PLAN:</b>\n"
+        "• <b>👑 Topic Mirroring & Auto-Folder Plan:</b> ₹299 / month\n"
+        "<i>Includes: Forum Topic Cloning (/mirror), Auto Topic Creation & Mapping, Instant Resume Checkpoints, Auto Group Bio & Disclaimer Tagging!</i>\n"
+        "⚠️ <b>Note:</b> Topic Mirroring is only accessible with this dedicated ₹299 plan. Standard premium users must purchase this plan to use topic cloning.</blockquote>\n\n"
         "<blockquote><b>💳 ACCEPTED PAYMENT METHODS:</b>\n"
         "• UPI (GPay / PhonePe / Paytm)\n"
         "• Amazon Gift Cards\n"
         "• Crypto (USDT BEP20/TRC20)</blockquote>\n\n"
-        "📲 <b>To Buy Premium Access:</b> Click <b>Contact Admin</b> below!"
+        "📲 <b>To Buy Access:</b> Click <b>Contact Admin</b> below!"
     )
      
     buttons = InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("💬 Buy Premium / Contact Admin", url="https://t.me/SRC_PRO_BOT")],
+            [InlineKeyboardButton("💬 Buy Plan / Contact Admin", url="https://t.me/CHOSEN_ONEx_bot")],
             [InlineKeyboardButton("📜 Terms & Conditions", callback_data="see_terms")],
         ]
     )

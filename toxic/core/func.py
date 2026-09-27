@@ -32,6 +32,19 @@ async def chk_user(message, user_id):
         return 0
     else:
         return 1
+
+async def chk_mirror_user(user_id):
+    """Checks if a user has active Topic Mirroring plan (or is Owner/Sudo). Returns 0 if authorized, 1 if not."""
+    owner_list = OWNER_ID if isinstance(OWNER_ID, list) else [OWNER_ID]
+    owner_strings = [str(o) for o in owner_list]
+    if str(user_id) in owner_strings:
+        return 0
+    from toxic.core.mongo.plans_db import mirror_premium_users
+    mirror_users_list = await mirror_premium_users()
+    mirror_user_strings = [str(u) for u in mirror_users_list]
+    if str(user_id) in mirror_user_strings:
+        return 0
+    return 1
 async def gen_link(app,chat_id):
    link = await app.export_chat_invite_link(chat_id)
    return link
