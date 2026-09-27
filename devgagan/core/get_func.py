@@ -3,9 +3,9 @@
 # Description: A Pyrogram bot for downloading files from Telegram channels or groups 
 #              and uploading them back to Telegram.
 # Author: Gagan
-# GitHub: https://github.com/devgaganin/
-# Telegram: https://t.me/team_spy_pro
-# YouTube: https://youtube.com/@dev_gagan
+
+
+
 # Created: 2025-01-11
 # Last Modified: 2025-02-01
 # Version: 2.0.5
@@ -1075,8 +1075,8 @@ async def clone_message(app, msg, target_chat_id, topic_id, edit_id, log_group, 
         branding_tag = get_user_branding_tag(sender)
         cleaned_text = f"> **{branding_tag}**"
     html_text = format_caption_to_html(cleaned_text)
-    devgaganin = await app.send_message(target_chat_id, html_text if html_text else cleaned_text, parse_mode=ParseMode.HTML, reply_to_message_id=topic_id)
-    await devgaganin.copy(log_group)
+    sent_msg = await app.send_message(target_chat_id, html_text if html_text else cleaned_text, parse_mode=ParseMode.HTML, reply_to_message_id=topic_id)
+    await sent_msg.copy(log_group)
     if edit:
         try:
             await edit.delete()
@@ -1097,8 +1097,8 @@ async def clone_text_message(app, msg, target_chat_id, topic_id, edit_id, log_gr
         branding_tag = get_user_branding_tag(sender)
         cleaned_text = f"> **{branding_tag}**"
     html_text = format_caption_to_html(cleaned_text)
-    devgaganin = await app.send_message(target_chat_id, html_text if html_text else cleaned_text, parse_mode=ParseMode.HTML, reply_to_message_id=topic_id)
-    await devgaganin.copy(log_group)
+    sent_msg = await app.send_message(target_chat_id, html_text if html_text else cleaned_text, parse_mode=ParseMode.HTML, reply_to_message_id=topic_id)
+    await sent_msg.copy(log_group)
     if edit:
         try:
             await edit.delete()
@@ -1887,7 +1887,7 @@ def get_telethon_settings_buttons(user_id):
         [Button.inline("📄 Set PDF Watermark", b'setpdfwatermark'), Button.inline("🗑️ Remove PDF Watermark", b'rempdfwatermark')],
         [Button.inline("📤 Upload Method", b'uploadmethod'), Button.inline(f"🌶️ Spoiler: {'ON' if is_spoiler else 'OFF'}", b'togglespoiler')],
         [Button.inline("♻️ Reset All Settings ☢️", b'reset'), Button.inline("⛔ Logout", b'logout')],
-        [Button.url("💞 Contact Owner 🦋", "https://t.me/Chosen_Onex_bot")]
+        [Button.url("💞 Contact Owner 🦋", "https://t.me/SRC_PRO_BOT")]
     ]
 
 async def send_settings_message(chat_id, user_id):
@@ -2057,7 +2057,7 @@ async def callback_query_handler(event):
             [Button.inline(f"🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ v1 ⚡{pyrogram_check}", b'pyrogram')],
             [Button.inline(f"⚠️ Coming soon V2 {telethon_check}", b'telethon')]
         ]
-        await event.edit("Choose your preferred upload method:\n\n__**Note:** **🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ v2 ⚡**, built on Telethon(base), by @stolen_happines still in beta.__", buttons=buttons)
+        await event.edit("Choose your preferred upload method:\n\n__**Note:** **🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ v2 ⚡**, built on Telethon(base), by @SRC_PRO_BOT still in beta.__", buttons=buttons)
 
     elif event.data == b'pyrogram':
         save_user_upload_method(user_id, "Pyrogram")
@@ -2308,7 +2308,7 @@ async def handle_large_file(file, sender, edit, caption):
         if freecheck == 1:
             reply_markup = InlineKeyboardMarkup(
                 [
-                    [InlineKeyboardButton("💎 Get Premium to Forward", url="https://t.me/GeniusJunctionX")]
+                    [InlineKeyboardButton("💎 Get Premium to Forward", url="https://t.me/SRC_PRO_BOT")]
                 ]
             )
             await app.copy_message(
@@ -2520,7 +2520,7 @@ def progress_callback(done, total, user_id):
         f"│ **__Speed:__** {speed_mbps:.2f} Mbps\n"
         f"│ **__ETA:__** {remaining_time_min:.2f} min\n"
         f"╰──────────────────╯\n\n"
-        f"**__Pwrd by CHOSEN ONE ⚝__**"
+        f"⚝__**"
     )
     
     # Update tracking variables for the user
@@ -2583,7 +2583,7 @@ def dl_progress_callback(done, total, user_id):
         f"│ **__Speed:__** {speed_mbps:.2f} Mbps\n"
         f"│ **__ETA:__** {remaining_time_min:.2f} min\n"
         f"╰──────────────────╯\n\n"
-        f"**__Pwrd by CHOSEN ONE ⚝__**"
+        f"⚝__**"
     )
     
     # Update tracking variables for the user

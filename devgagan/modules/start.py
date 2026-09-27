@@ -3,9 +3,9 @@
 # Description: A Pyrogram bot for downloading files from Telegram channels or groups 
 #              and uploading them back to Telegram.
 # Author: Gagan
-# GitHub: https://github.com/devgaganin/
-# Telegram: https://t.me/team_spy_pro
-# YouTube: https://youtube.com/@dev_gagan
+
+
+
 # Created: 2025-01-11
 # Last Modified: 2025-01-11
 # Version: 2.0.5
@@ -117,7 +117,7 @@ help_pages = [
         "> 4. REPLACEWORDS : Can be used for words in deleted set via REMOVE WORDS\n"
         "> 5. RESET : To set the things back to default\n\n"
         "> You can set CUSTOM THUMBNAIL, PDF WATERMARK, VIDEO WATERMARK, SESSION-based login, etc. from settings\n\n"
-        "**__Powered by CHOSEN ONE ⚝__**"
+        "⚝__**"
     )
 ]
  
@@ -188,7 +188,7 @@ async def terms(client, message):
     buttons = InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("📋 See Plans", callback_data="see_plan")],
-            [InlineKeyboardButton("💬 Contact Now", url="https://t.me/CHOSEN_ONEx_bot")],
+            [InlineKeyboardButton("💬 Contact Now", url="https://t.me/SRC_PRO_BOT")],
         ]
     )
     await message.reply_text(terms_text, reply_markup=buttons)
@@ -211,14 +211,14 @@ async def plan(client, message):
         "• **15-Day Plan:** ₹60 | $0.90 USDT\n"
         "• **30-Day Plan:** ₹90 | $1.20 USDT (Max Speed 🚀)\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "📲 **To Upgrade:** Contact @CHOSEN_ONEx_bot\n"
+        "📲 **To Upgrade:** Contact @SRC_PRO_BOT\n"
         "💳 **Payments:** UPI, Amazon Gift Card, or USDT (Crypto)"
     )
    
     buttons = InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("📜 See Terms", callback_data="see_terms")],
-            [InlineKeyboardButton("💬 Contact Now", url="https://t.me/CHOSEN_ONEx_bot")],
+            [InlineKeyboardButton("💬 Contact Now", url="https://t.me/SRC_PRO_BOT")],
         ]
     )
     await message.reply_text(plan_text, reply_markup=buttons)
@@ -238,13 +238,13 @@ async def see_plan(client, callback_query):
         "• Instant extraction (no cooldowns/captcha)\n"
         "• Premium fast multi-threaded engine ⚡\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "📲 **To Upgrade:** Contact @CHOSEN_ONEx_bot"
+        "📲 **To Upgrade:** Contact @SRC_PRO_BOT"
     )
      
     buttons = InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("📜 See Terms", callback_data="see_terms")],
-            [InlineKeyboardButton("💬 Contact Now", url="https://t.me/CHOSEN_ONEx_bot")],
+            [InlineKeyboardButton("💬 Contact Now", url="https://t.me/SRC_PRO_BOT")],
         ]
     )
     await callback_query.message.edit_text(plan_text, reply_markup=buttons)
@@ -262,7 +262,7 @@ async def see_terms(client, callback_query):
     buttons = InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("📋 See Plans", callback_data="see_plan")],
-            [InlineKeyboardButton("💬 Contact Now", url="https://t.me/CHOSEN_ONEx_bot")],
+            [InlineKeyboardButton("💬 Contact Now", url="https://t.me/SRC_PRO_BOT")],
         ]
     )
     await callback_query.message.edit_text(terms_text, reply_markup=buttons)
@@ -296,7 +296,7 @@ async def guide_page_2(_, query: CallbackQuery):
         "💡 Use /login only for private source.\n"
         "Use /id to get user or chat ID.\n\n"
         "Use /batch to download multiple posts at once 💀\n\n"
-        "Powered by CHOSEN ONE ⚝",
+        "⚝",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("⬅️ Back", callback_data="guide_page_1")]
         ])

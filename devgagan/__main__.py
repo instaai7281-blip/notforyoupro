@@ -3,9 +3,9 @@
 # Description: A Pyrogram bot for downloading files from Telegram channels or groups 
 #              and uploading them back to Telegram.
 # Author: Gagan
-# GitHub: https://github.com/devgaganin/
-# Telegram: https://t.me/team_spy_pro
-# YouTube: https://youtube.com/@dev_gagan
+
+
+
 # Created: 2025-01-11
 # Last Modified: 2025-01-11
 # Version: 2.0.5
@@ -54,7 +54,7 @@ async def daily_plans_broadcast_task():
         buttons = InlineKeyboardMarkup(
             [
                 [InlineKeyboardButton("📋 See Plans", callback_data="see_plan")],
-                [InlineKeyboardButton("💬 Contact Now", url="https://t.me/CHOSEN_ONEx_bot")],
+                [InlineKeyboardButton("💬 Contact Now", url="https://t.me/SRC_PRO_BOT")],
             ]
         )
         
@@ -213,17 +213,8 @@ async def devggn_boot():
 
     print("""
 ---------------------------------------------------
-Bot Deployed successfully ...
-Description: A Pyrogram bot for downloading files from Telegram channels or groups 
-                and uploading them back to Telegram.
-Author: Gagan
-GitHub: https://github.com/devgaganin/
-Telegram: https://t.me/team_spy_pro
-YouTube: https://youtube.com/@dev_gagan
-Created: 2025-01-11
-Last Modified: 2025-01-11
-Version: 2.0.5
-License: MIT License
+Restricted Content Saver & Topic Mirror Bot PRO
+Status: Running Successfully...
 ---------------------------------------------------
 """)
 

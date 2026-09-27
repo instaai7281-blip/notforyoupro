@@ -3,9 +3,9 @@
 # Description: A Pyrogram bot for downloading files from Telegram channels or groups 
 #              and uploading them back to Telegram.
 # Author: Gagan
-# GitHub: https://github.com/devgaganin/
-# Telegram: https://t.me/team_spy_pro
-# YouTube: https://youtube.com/@dev_gagan
+
+
+
 # Created: 2025-01-11
 # Last Modified: 2025-01-11
 # Version: 2.0.5
@@ -457,7 +457,7 @@ async def execute_batch(user_id, base_url, cs, cl, is_tg_openmessage, freecheck)
                         f"❌ **Failed:** {fail_count}\n"
                         f"⏳ **ETA:** `{eta_str}`\n"
                         f"📍 **Current ID:** `{i}`\n\n"
-                        f"**Powered by CHOSEN ONE ⚝**",
+                        f"⚝**",
                         reply_markup=keyboard
                     )
                 except:
@@ -474,7 +474,7 @@ async def execute_batch(user_id, base_url, cs, cl, is_tg_openmessage, freecheck)
             save_user_data(user_id, "last_batch_url", next_url)
             
         await pin_msg.edit_text(
-            f"✅ **Batch {final_status}!**\n\n✨ **Success:** {success_count}\n❌ **Failed:** {fail_count}\n📊 **Total:** {cl}\n\n**__Powered by CHOSEN ONE ⚝__**",
+            f"✅ **Batch {final_status}!**\n\n✨ **Success:** {success_count}\n❌ **Failed:** {fail_count}\n📊 **Total:** {cl}\n\n⚝__**",
             reply_markup=InlineKeyboardMarkup([[join_button]])
         )
         await app.send_message(user_id, f"Batch process {final_status}! ✨\nSuccess: {success_count} | Failed: {fail_count}")
@@ -492,7 +492,7 @@ async def execute_batch(user_id, base_url, cs, cl, is_tg_openmessage, freecheck)
             buttons = InlineKeyboardMarkup(
                 [
                     [InlineKeyboardButton("📋 See Plans", callback_data="see_plan")],
-                    [InlineKeyboardButton("💬 Contact Now", url="https://t.me/CHOSEN_ONEx_bot")],
+                    [InlineKeyboardButton("💬 Contact Now", url="https://t.me/SRC_PRO_BOT")],
                 ]
             )
             await app.send_message(user_id, upgrade_msg, reply_markup=buttons)

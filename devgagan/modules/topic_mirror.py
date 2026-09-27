@@ -1702,7 +1702,7 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
                         f"> ✅ **New Copied:** `{overall_copied}` | ⏩ **Resumed/Skipped:** `{overall_skipped}`\n"
                         f"> ❌ **Failed:** `{overall_failed}` | 🛡️ **Bypass & Clean:** `Active`\n"
                         f" ╚═══━━━─⚝─━━━═══╝\n\n"
-                        f"**__Pwrd by CHOSEN ONE ⚝__**"
+                        f"⚝__**"
                     )
                     status_html = format_caption_to_html(status_text)
                     try:
@@ -1737,7 +1737,7 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
             f"• **Total Time:** ⏱️ `{total_time_taken}`\n\n"
             f"📂 **Per-Topic Breakdown:**\n"
             f"{breakdown_text}\n\n"
-            f"**__Pwrd by CHOSEN ONE ⚝__**"
+            f"⚝__**"
         )
 
         final_html = format_caption_to_html(final_report)

@@ -3,9 +3,9 @@
 # Description: A Pyrogram bot for downloading files from Telegram channels or groups 
 #              and uploading them back to Telegram.
 # Author: Gagan
-# GitHub: https://github.com/devgaganin/
-# Telegram: https://t.me/team_spy_pro
-# YouTube: https://youtube.com/@dev_gagan
+
+
+
 # Created: 2025-01-11
 # Last Modified: 2025-01-11
 # Version: 2.0.5
@@ -96,7 +96,7 @@ async def process_audio(client, event, url, cookies_env_var=None):
         cookiefile_path = os.path.abspath("cookies.txt")
  
     start_time = time.time()
-    random_filename = f"@team_spy_pro_{event.sender_id}"
+    random_filename = f"media_{event.sender_id}"
     download_path = f"{random_filename}.mp3"
  
     ydl_opts = {

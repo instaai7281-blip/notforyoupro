@@ -3,9 +3,9 @@
 # Description: A Pyrogram bot for downloading files from Telegram channels or groups 
 #              and uploading them back to Telegram.
 # Author: Gagan
-# GitHub: https://github.com/devgaganin/
-# Telegram: https://t.me/team_spy_pro
-# YouTube: https://youtube.com/@dev_gagan
+
+
+
 # Created: 2025-01-11
 # Last Modified: 2025-01-11
 # Version: 2.0.5
@@ -43,14 +43,14 @@ async def subscribe(app, message):
       try:
          user = await app.get_chat_member(update_channel, message.from_user.id)
          if user.status == "kicked":
-            await message.reply_text("You are Banned. Contact -- @CHOSEN_ONEx_bot")
+            await message.reply_text("You are Banned. Contact -- @SRC_PRO_BOT")
             return 1
       except UserNotParticipant:
         caption = f"**Join our channel to use the bot 😉\nAfter Join... /start Again**"
         await message.reply_photo(photo="https://postimg.cc/K133r7Vf",caption=caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Join Now...", url=f"{url}")]]))
         return 1
       except Exception:
-         await message.reply_text("Something Went Wrong. Contact us @CHOSEN_ONEx_bot ...")
+         await message.reply_text("Something Went Wrong. Contact us @SRC_PRO_BOT ...")
          return 1
 async def get_seconds(time_string):
     def extract_value_and_unit(ts):
@@ -506,7 +506,7 @@ async def progress_callback(current, total, progress_message):
     f">*┋ **__Progress:__** {percent:.2f}%\n"
     f">*┋ **__Uploaded:__** {current_mb:.2f} MB / {total_mb:.2f} MB\n\n"
     f"  ╚═══━━━─⚝─━━━═══╝\n\n"
-    f"**__Pwrd by CHOSEN ONE ⚝__**"
+    f"⚝__**"
         )
 
 async def prog_bar(current, total, ud_type, message, start):

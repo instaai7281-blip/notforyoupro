@@ -1,12 +1,11 @@
- 
 # ---------------------------------------------------
 # File Name: shrink.py
 # Description: A Pyrogram bot for downloading files from Telegram channels or groups 
 #              and uploading them back to Telegram.
 # Author: Gagan
-# GitHub: https://github.com/devgaganin/
-# Telegram: https://t.me/team_spy_pro
-# YouTube: https://youtube.com/@dev_gagan
+
+
+
 # Created: 2025-01-11
 # Last Modified: 2025-01-11
 # Version: 2.0.5
@@ -118,7 +117,7 @@ async def token_handler(client, message):
     if len(message.command) <= 1:
         image_url = "https://freeimage.host/i/F5dGOsj"
         join_button = InlineKeyboardButton("✈️ Main Channel", url="https://t.me/II_LevelUP_II")
-        premium_contact = InlineKeyboardButton("👑 𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘 ⚝", url="https://t.me/CHOSEN_ONEx_bot")
+        premium_contact = InlineKeyboardButton("👑 𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘 ⚝", url="https://t.me/SRC_PRO_BOT")
         keyboard = InlineKeyboardMarkup([
             [join_button],
             [premium_contact]
