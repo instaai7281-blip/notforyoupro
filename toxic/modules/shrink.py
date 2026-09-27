@@ -18,8 +18,8 @@ import random
 import requests
 import string
 import aiohttp
-from devgagan import app
-from devgagan.core.func import *
+from toxic import app
+from toxic.core.func import *
 from datetime import datetime, timedelta
 from motor.motor_asyncio import AsyncIOMotorClient
 from config import MONGO_DB, WEBSITE_URL, AD_API, LOG_GROUP  
@@ -109,7 +109,7 @@ async def token_handler(client, message):
 
     user_id = message.chat.id
     try:
-        from devgagan.core.mongo.users_db import add_user
+        from toxic.core.mongo.users_db import add_user
         await add_user(user_id)
     except Exception as e:
         print(f"Error adding user in start command: {e}")

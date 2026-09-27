@@ -57,7 +57,7 @@ A high-performance, enterprise-grade Telegram Bot built with Pyrogram and Teleth
 git clone <repo-url>
 cd <repo-folder>
 pip install -r requirements.txt
-python -m devgagan
+python -m toxic
 ```
 
 ---

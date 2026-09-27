@@ -17,11 +17,11 @@ import os
 import time
 import sys
 import motor
-from devgagan import app
+from toxic import app
 from pyrogram import filters
 from config import OWNER_ID
-from devgagan.core.mongo.users_db import get_users, add_user, get_user, get_all_registered_users
-from devgagan.core.mongo.plans_db import premium_users
+from toxic.core.mongo.users_db import get_users, add_user, get_user, get_all_registered_users
+from toxic.core.mongo.plans_db import premium_users
 from pyrogram.types import Message
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from pyrogram.enums import ChatType
@@ -129,7 +129,7 @@ from pyrogram.types import (
 
 import datetime
 import pytz
-from devgagan.core.mongo.plans_db import check_premium, add_premium, remove_premium
+from toxic.core.mongo.plans_db import check_premium, add_premium, remove_premium
 from pyrogram.enums import ParseMode
 
 # PAGINATION CONFIG

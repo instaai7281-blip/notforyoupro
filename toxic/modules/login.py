@@ -13,13 +13,13 @@
 # ---------------------------------------------------
 
 from pyrogram import filters, Client
-from devgagan import app
+from toxic import app
 import random
 import os
 import asyncio
 import string
-from devgagan.core.mongo import db
-from devgagan.core.func import subscribe, chk_user
+from toxic.core.mongo import db
+from toxic.core.func import subscribe, chk_user
 from config import API_ID as api_id, API_HASH as api_hash
 from pyrogram.errors import (
     ApiIdInvalid,

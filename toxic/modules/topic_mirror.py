@@ -21,11 +21,11 @@ from pyrogram import filters, Client, raw, types
 from pyrogram.enums import ParseMode
 from pyrogram.errors import FloodWait, RPCError, ChatAdminRequired, ChannelInvalid, ChannelPrivate
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
-from devgagan import app, get_client, pro_clients
+from toxic import app, get_client, pro_clients
 from config import API_ID, API_HASH, OWNER_ID, LOG_GROUP, THUMBNAIL_DIR
-from devgagan.core.func import chk_user, humanbytes, TimeFormatter, video_metadata, thumbnail, add_pdf_watermark, screenshot, optimize_thumbnail
-from devgagan.core.mongo import db
-from devgagan.core.get_func import get_user_branding_tag, format_caption_to_html, clean_surrogates, get_user_spoiler_preference
+from toxic.core.func import chk_user, humanbytes, TimeFormatter, video_metadata, thumbnail, add_pdf_watermark, screenshot, optimize_thumbnail
+from toxic.core.mongo import db
+from toxic.core.get_func import get_user_branding_tag, format_caption_to_html, clean_surrogates, get_user_spoiler_preference
 
 # In-memory tracking of active topic mirroring jobs
 active_mirrors = {}
@@ -70,7 +70,7 @@ def remove_chaudhary_fancy(text: str) -> str:
         r'insaan[^a-zA-Z0-9\s]*',
         r'team\s*hs[^a-zA-Z0-9\s]*',
         r'team\s*hs\s*亗?',
-        r'devgagan',
+        r'toxic',
         r'@Src_pro_bot',
         r'Chosen\s*One',
         r'team[\s_\-\.]*jnc',
@@ -171,7 +171,7 @@ def format_media_filename(raw_filename: str, media_type: str = "document") -> st
         r'(?i)[*_]*team[\s_\-\.]*spy[\s_\-\.]*pro[*_]*',
         r"(?i)[*_]*let\'?s\s*help[*_]*",
         r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?',
-        r'(?i)devgagan',
+        r'(?i)toxic',
         r'(?i)chosen\s*one',
         r'(?i)(Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*',
         r'(?i)powered\s*by[\s_:➤>–\-]*',
@@ -1416,7 +1416,7 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
 
         # Auto-update target group bio / description with disclaimer & contact info
         try:
-            from devgagan.core.mongo.db import get_custom_group_bio, add_joined_chat
+            from toxic.core.mongo.db import get_custom_group_bio, add_joined_chat
             target_bio = await get_custom_group_bio()
             await app.set_chat_description(tgt_chat_id, target_bio)
             await add_joined_chat(tgt_chat_id, tgt_title)

@@ -19,22 +19,22 @@ import gc
 import os
 import re
 from typing import Callable
-from devgagan import app, get_client, task_semaphore
+from toxic import app, get_client, task_semaphore
 import aiofiles
-from devgagan import sex as gf
+from toxic import sex as gf
 from telethon.tl.types import DocumentAttributeVideo, Message
 from telethon.sessions import StringSession
 import pymongo
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import ChannelBanned, ChannelInvalid, ChannelPrivate, ChatIdInvalid, ChatInvalid
 from pyrogram.enums import MessageMediaType, ParseMode
-from devgagan.core.func import *
+from toxic.core.func import *
 from pyrogram.errors import RPCError
 from pyrogram.types import Message
 from config import MONGO_DB as MONGODB_CONNECTION_STRING, LOG_GROUP, OWNER_ID, STRING, STRINGS, API_ID, API_HASH, THUMBNAIL_DIR
-from devgagan.core.mongo import db as odb
+from toxic.core.mongo import db as odb
 from telethon import TelegramClient, events, Button
-from devgagantools import fast_upload, fast_download
+from toxictools import fast_upload, fast_download
 from datetime import datetime
 import asyncio
 import unicodedata
@@ -128,7 +128,7 @@ def clean_text_advanced(text, user_tag, delete_words=None, replacements=None):
         r'team[\s_\-\.]*spy[\s_\-\.]*pro',
         r"let'?s\s*help",
         r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?',
-        r'devgagan',
+        r'toxic',
         r'@Src_pro_bot',
         r'Chosen\s*One',
         r'jnc',
@@ -181,7 +181,7 @@ def clean_filename(text, user_tag=""):
         r'(?i)[*_]*team[\s_\-\.]*spy[\s_\-\.]*pro[*_]*',
         r"(?i)[*_]*let\'?s\s*help[*_]*",
         r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?',
-        r'(?i)devgagan',
+        r'(?i)toxic',
         r'(?i)chosen\s*one',
         r'(?i)(Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*',
         r'(?i)powered\s*by[\s_:➤>–\-]*',
@@ -253,7 +253,7 @@ def clean_text_message(text, sender=None):
         r'(?i)[*_]*team[\s_\-\.]*spy[\s_\-\.]*pro[*_]*',
         r"(?i)[*_]*let'?s\s*help[*_]*",
         r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?',
-        r'(?i)devgagan',
+        r'(?i)toxic',
         r'(?i)(Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*',
         r'(?i)powered\s*by[^\n]*',
         r'(?i)via\s*@\w+',
@@ -293,7 +293,7 @@ db = mongo_app[DB_NAME]
 collection = db[COLLECTION_NAME]
 
 if STRINGS:
-    from devgagan import pro
+    from toxic import pro
 else:
     pro = None
 
@@ -335,7 +335,7 @@ async def fetch_upload_method(user_id):
 
 async def check_and_auto_forward(sender, message_or_file, caption=None, reply_markup=None, attributes=None, thumb_path=None, client_to_use=None):
     try:
-        from devgagan.core.mongo.db import get_forward_mapping
+        from toxic.core.mongo.db import get_forward_mapping
         target_dest = await get_forward_mapping(sender)
         if not target_dest:
             return
@@ -455,7 +455,7 @@ async def log_upload(user_id, file_type, file_msg, upload_method, duration=None,
         await file_msg.copy(LOG_GROUP, caption=text)
 
         # Real-time Auto-Forwarder for specific users (AIA)
-        from devgagan.core.mongo.db import get_forward_mapping
+        from toxic.core.mongo.db import get_forward_mapping
         target_dest = await get_forward_mapping(user_id)
         if target_dest:
             dest_chat_id = target_dest
@@ -1545,7 +1545,7 @@ def format_caption(original_caption, sender, custom_caption, filename=None):
         r'(?i)[*_]*team[\s_\-\.]*spy[\s_\-\.]*pro[*_]*',
         r"(?i)[*_]*let'?s\s*help[*_]*",
         r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?',
-        r'(?i)devgagan',
+        r'(?i)toxic',
         r'(?i)chosen\s*one',
     ]
     for pattern in branding_patterns:

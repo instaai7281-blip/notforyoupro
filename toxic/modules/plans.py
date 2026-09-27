@@ -15,11 +15,11 @@
 from datetime import timedelta
 import pytz
 import datetime, time
-from devgagan import app
+from toxic import app
 import asyncio
 from config import OWNER_ID
-from devgagan.core.func import get_seconds
-from devgagan.core.mongo import plans_db  
+from toxic.core.func import get_seconds
+from toxic.core.mongo import plans_db  
 from pyrogram import filters 
 
 
@@ -424,7 +424,7 @@ async def refresh_users(_, message):
     await message.reply(summary)
 
 # Admin Administration: Clear Premium, Ban, and Unban features
-from devgagan.core.mongo.db import is_user_banned, ban_user, unban_user
+from toxic.core.mongo.db import is_user_banned, ban_user, unban_user
 
 @app.on_message(filters.command("clearpremium") & filters.user(OWNER_ID))
 async def clear_all_premium_cmd(client, message):

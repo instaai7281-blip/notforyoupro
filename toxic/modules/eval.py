@@ -19,7 +19,7 @@ from time import time
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from config import OWNER_ID
-from devgagan import app
+from toxic import app
 
 async def aexec(code, client, message):
     exec(
@@ -223,4 +223,4 @@ async def shellrunner(_, message):
 @app.on_message(filters.command("restart") & filters.user(OWNER_ID))
 async def update(_, message):
     await message.reply("Restarting ... ")
-    os.execl(sys.executable, sys.executable, "-m", "devgagan")
+    os.execl(sys.executable, sys.executable, "-m", "toxic")

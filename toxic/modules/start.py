@@ -13,11 +13,11 @@
 # ---------------------------------------------------
 
 from pyrogram import filters
-from devgagan import app
+from toxic import app
 from config import OWNER_ID
-from devgagan.core.func import subscribe
+from toxic.core.func import subscribe
 import asyncio
-from devgagan.core.func import *
+from toxic.core.func import *
 from pyrogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Message, BotCommand
 from pyrogram.raw.functions.bots import SetBotInfo
 from pyrogram.raw.types import InputUserSelf

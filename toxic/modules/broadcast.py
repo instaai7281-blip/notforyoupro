@@ -3,9 +3,9 @@ import datetime
 from pyrogram import filters, Client
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, ChatMemberUpdated
 from pyrogram.enums import ChatType, ChatMemberStatus
-from devgagan import app
+from toxic import app
 from config import OWNER_ID
-from devgagan.core.mongo.db import (
+from toxic.core.mongo.db import (
     get_broadcast_config, 
     update_broadcast_config, 
     add_broadcast_deletion,
@@ -126,14 +126,14 @@ async def delete_all_active_broadcast_messages():
     owner_list = OWNER_ID if isinstance(OWNER_ID, list) else [OWNER_ID]
     for owner_id in owner_list:
         try:
-            from devgagan.modules.main import initialize_userbot
+            from toxic.modules.main import initialize_userbot
             owner_userbot = await initialize_userbot(int(owner_id))
             if owner_userbot:
                 break
         except Exception:
             pass
 
-    from devgagan.core.get_func import get_client
+    from toxic.core.get_func import get_client
     shared_client = get_client()
     
     pending = await get_pending_deletions()
@@ -181,7 +181,7 @@ async def send_auto_broadcast_to_all(manual=False):
     owner_list = OWNER_ID if isinstance(OWNER_ID, list) else [OWNER_ID]
     for owner_id in owner_list:
         try:
-            from devgagan.modules.main import initialize_userbot
+            from toxic.modules.main import initialize_userbot
             owner_userbot = await initialize_userbot(int(owner_id))
             if owner_userbot:
                 break
@@ -201,7 +201,7 @@ async def send_auto_broadcast_to_all(manual=False):
             print(f"Owner userbot get_dialogs failed: {e}")
 
     # Fallback to shared userbot client if owner userbot not logged in
-    from devgagan.core.get_func import get_client
+    from toxic.core.get_func import get_client
     shared_client = get_client()
     if not owner_userbot and shared_client:
         try:

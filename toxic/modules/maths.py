@@ -1,6 +1,6 @@
 import asyncio
 from pyrogram import filters
-from devgagan import app, sex
+from toxic import app, sex
 from telethon import functions
 from telethon.tl.types import InputRichMessageMarkdown
 

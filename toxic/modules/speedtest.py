@@ -16,8 +16,8 @@ from time import time
 from speedtest import Speedtest
 import math
 from telethon import events
-from devgagan import botStartTime
-from devgagan import sex as gagan
+from toxic import botStartTime
+from toxic import sex as gagan
 
 SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
 

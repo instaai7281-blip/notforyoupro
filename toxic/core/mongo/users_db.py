@@ -62,7 +62,7 @@ async def del_user(user):
 async def get_all_registered_users():
   users = await get_users()
   try:
-    from devgagan.core.mongo.db import db as settings_db
+    from toxic.core.mongo.db import db as settings_db
     async for doc in settings_db.find({}):
       if "_id" in doc:
         try:

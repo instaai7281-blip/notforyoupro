@@ -12,7 +12,7 @@
 # License: MIT License
 # ---------------------------------------------------
 
-print("DEBUG: devgagan/__init__.py started")
+print("DEBUG: toxic/__init__.py started")
 import asyncio
 import logging
 import re

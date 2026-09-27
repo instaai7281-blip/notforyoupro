@@ -23,17 +23,17 @@ import string
 import requests
 import logging
 import cv2
-from devgagan import sex as client
+from toxic import sex as client
 from pyrogram import Client,filters
 from telethon import events
 from telethon.sync import TelegramClient
 from telethon.tl.types import DocumentAttributeVideo
-from devgagan.core.func import screenshot, video_metadata, progress_bar, optimize_thumbnail
+from toxic.core.func import screenshot, video_metadata, progress_bar, optimize_thumbnail
 from telethon.tl.functions.messages import EditMessageRequest
-from devgagantools import fast_upload
+from toxictools import fast_upload
 from concurrent.futures import ThreadPoolExecutor
 import aiohttp 
-from devgagan import app
+from toxic import app
 import logging
 import aiofiles
 from mutagen.id3 import ID3, TIT2, TPE1, COMM, APIC

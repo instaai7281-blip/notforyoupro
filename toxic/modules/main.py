@@ -18,17 +18,17 @@ import random
 import string
 import asyncio
 from pyrogram import filters, Client
-from devgagan import app, task_semaphore
+from toxic import app, task_semaphore
 from config import API_ID, API_HASH, FREEMIUM_LIMIT, PREMIUM_LIMIT, OWNER_ID
-from devgagan.core.get_func import get_msg, save_user_data, load_user_data, get_target_chat_id
-from devgagan.core.func import *
-from devgagan.core.mongo import db
+from toxic.core.get_func import get_msg, save_user_data, load_user_data, get_target_chat_id
+from toxic.core.func import *
+from toxic.core.mongo import db
 from pyrogram.errors import FloodWait
 from datetime import datetime, timedelta
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import subprocess
 from pyrogram.types import Message
-from devgagan.modules.shrink import is_user_verified
+from toxic.modules.shrink import is_user_verified
 async def generate_random_name(length=8):
     return ''.join(random.choices(string.ascii_lowercase, k=length))
 
@@ -74,14 +74,14 @@ import re
 @app.on_message(filters.private & (filters.forwarded | ~filters.text))
 async def handle_forwarded_or_media(client, message):
     user_id = message.from_user.id if message.from_user else message.chat.id
-    from devgagan.core.func import chk_user
+    from toxic.core.func import chk_user
     if await chk_user(message, user_id) == 1:
         return
 
     if message.text and re.search(r'https?://(?:www\.)?(?:t\.me|telegram\.me|telegram\.dog)', message.text):
         return
 
-    from devgagan.core.get_func import get_target_chat_id, extract_message_topic_id
+    from toxic.core.get_func import get_target_chat_id, extract_message_topic_id
     target_chat_id = get_target_chat_id(user_id)
     if target_chat_id == user_id:
         await message.reply_text("📢 **Please set a destination Chat ID first in /settings or via button!**")

@@ -17,8 +17,8 @@ import traceback
 from pyrogram import filters
 from pyrogram.errors import FloodWait, InputUserDeactivated, UserIsBlocked, PeerIdInvalid
 from config import OWNER_ID
-from devgagan import app
-from devgagan.core.mongo.users_db import get_all_registered_users
+from toxic import app
+from toxic.core.mongo.users_db import get_all_registered_users
 
 async def send_msg(user_id, message):
     try:
