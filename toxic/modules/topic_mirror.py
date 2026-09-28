@@ -1981,16 +1981,32 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
 
         # Send Stylish Completion Summary to Target Forum Group
         try:
+            STUDY_QUOTES = [
+                "📖 <i>\"Success isn't given. It's earned. In the library, on the desk, with every page turned.\"</i> 💫",
+                "⚡ <i>\"Don't stop when you're tired. Stop when you're done! Keep grinding.\"</i> 🚀",
+                "🎯 <i>\"The expert in anything was once a beginner. Focus on your goal!\"</i> ✨",
+                "🔥 <i>\"Hard work beats talent when talent doesn't work hard. Study smart!\"</i> 💡",
+                "📚 <i>\"Your future self is watching you right now through memories. Make them proud!\"</i> 👑",
+                "🏆 <i>\"Push yourself, because no one else is going to do it for you.\"</i> 🌟",
+                "🚀 <i>\"Dream big, work hard, stay focused, and surround yourself with good energy.\"</i> 💎",
+                "🧠 <i>\"Consistency is the key to mastering any subject. Small steps daily!\"</i> 🎓",
+                "📖 <i>\"Work hard in silence, let your success be your noise.\"</i> 💬",
+                "🌟 <i>\"The beautiful thing about learning is that nobody can take it away from you.\"</i> ⚡",
+                "🎓 <i>\"Discipline is choosing between what you want now and what you want most.\"</i> 🎯",
+                "💫 <i>\"Believe in yourself and all that you are. Great things take time.\"</i> 🔮",
+                "🔥 <i>\"Doubt kills more dreams than failure ever will. Believe & Achieve!\"</i> 🦁",
+                "✨ <i>\"Study like there is no tomorrow, so you can live tomorrow like you always wanted!\"</i> 🚀",
+                "👑 <i>\"The harder you work for something, the greater you'll feel when you achieve it.\"</i> 🏆"
+            ]
+            random_quote = random.choice(STUDY_QUOTES)
             target_group_msg = (
-                "<blockquote><b>🎉 UPDATE COMPLETE BOSS! 🎉</b></blockquote>\n\n"
-                "<b>💎 TOXIC BOT PRO — TOPIC SYNC SUMMARY:</b>\n"
-                f"• <b>Source:</b> <code>{src_title}</code>\n"
-                f"• <b>Target Forum:</b> <code>{tgt_title}</code>\n"
+                "<blockquote><b>✅ 𝗖ꪮ𝗺𝗽𝗹𝗲𝘁𝗲 𝗛ꪮ 𝗚𝗮𝘆𝗮 𝗕ꪮ$$ 😎</b></blockquote>\n\n"
                 f"• <b>Total New Uploaded/Updated:</b> ✅ <code>{overall_copied}</code> files\n"
                 f"• <b>Total Topics Processed:</b> 📂 <code>{len(topic_stats)}/{total_topics_count}</code>\n"
                 f"• <b>Total Data Volume:</b> 💾 <code>{humanbytes(overall_transferred_bytes)}</code>\n"
                 f"• <b>Duration:</b> ⏱️ <code>{total_time_taken}</code>\n\n"
-                "<blockquote><b>✅ All pending content has been successfully synced & updated!</b></blockquote>"
+                "<blockquote><b>✅ All pending content has been successfully synced & updated!</b></blockquote>\n\n"
+                f"<b>💡 Daily Motivation:</b>\n{random_quote}"
             )
             try:
                 await app.send_message(
