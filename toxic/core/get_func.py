@@ -323,7 +323,9 @@ async def resolve_peer_safely(client, chat_id):
         elif hasattr(client, "get_entity"):
             await client.get_entity(chat_id)
     except Exception as e:
-        print(f"Failed to resolve peer {chat_id} on client {client.__class__.__name__}: {e}")
+        err_msg = str(e).lower()
+        if not any(k in err_msg for k in ["channel_invalid", "peer_id_invalid", "channel_private", "chat_write_forbidden"]):
+            print(f"Failed to resolve peer {chat_id} on client {client.__class__.__name__}: {e}")
     return chat_id
 
 async def is_enabled(user_id, media_type):
@@ -780,9 +782,10 @@ async def get_msg(userbot: TelegramClient, sender: int, edit_id: int, msg_link: 
         if chat in saved_channel_ids:
             await app.edit_message_text(
                 sender, edit_id,
-                "This channel is protected by **__CHOSEN ONE ⚝__💀**.\nKya Be... Hamara Hi Content Nikalega 🌝 Kahi Or Try Kar 😘"
+                "This channel is protected by **@CrazyxDeveloper_Bot 🛡️**.\nKya Be... Hamara Hi Content Nikalega 🌝 Kahi Or Try Kar 😘"
             )
             return
+
 
         # Check if Direct Forward is enabled for public links
         is_private = 't.me/c/' in msg_link or 't.me/b/' in msg_link or 'tg://openmessage' in msg_link
