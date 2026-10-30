@@ -13,6 +13,7 @@
 # ---------------------------------------------------
 
 import datetime
+import re
 from config import MONGO_DB
 from motor.motor_asyncio import AsyncIOMotorClient as MongoCli
 
@@ -828,14 +829,21 @@ async def update_mirror_schedule_last_run(src_chat_id: int, tgt_chat_id: int, ru
 DEFAULT_GROUP_BIO = (
     "Don't DM to anyone ⚠️\n\n"
     "https://telegra.ph/Disclaimer-cum-DMCA-09-13-2\n\n"
-    "Contact: @CHOSEN_ONEx_bot"
+    "Contact: @BerlinxMoney_bot"
 )
 
 async def get_custom_group_bio() -> str:
     """Retrieves configured global group bio/description from MongoDB, or default."""
     doc = await db.find_one({"_id": "global_group_bio"})
     if doc and doc.get("bio"):
-        return doc["bio"]
+        bio = doc["bio"]
+        if "@CHOSEN_ONEx_bot" in bio or "@chosen_onex_bot" in bio:
+            bio = re.sub(r'(?i)@chosen_onex_bot', '@BerlinxMoney_bot', bio)
+            try:
+                await set_custom_group_bio(bio)
+            except Exception:
+                pass
+        return bio
     return DEFAULT_GROUP_BIO
 
 async def set_custom_group_bio(bio: str):
