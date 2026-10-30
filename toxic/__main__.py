@@ -24,14 +24,29 @@ from aiojobs import create_scheduler
 
 loop = asyncio.get_event_loop()
 
-# Function to schedule expiry checks
+async def optimized_memory_cleanup():
+    while True:
+        # Purani aur unused memory manually free karo
+        collected = gc.collect()
+        print(f"[MEMORY] Garbage collected: {collected} objects freed.")
+        
+        # Har 10 minute mein memory cleanup run hoga taaki RAM overload na ho
+        await asyncio.sleep(600)
+
+
+# Function to schedule expiry checks & bio message auto-deletions
 async def schedule_expiry_check():
     scheduler = await create_scheduler()
     while True:
         await scheduler.spawn(check_and_remove_expired_users())
         await scheduler.spawn(check_and_remove_expired_mirror_users())
-        await asyncio.sleep(60)  # Check every 60 seconds for accurate demo/hourly expirations
-        gc.collect()
+        try:
+            from toxic import app
+            from toxic.core.bio_check import check_pending_bio_auto_deletions
+            await scheduler.spawn(check_pending_bio_auto_deletions(app))
+        except Exception:
+            pass
+        await asyncio.sleep(60)  # Check every 60 seconds
 
 
 # Function to broadcast upgrade plans daily at 7 PM
@@ -182,23 +197,14 @@ async def schedule_broadcast_task():
         await asyncio.sleep(30)
 
 async def schedule_daily_plans_broadcast():
-    import datetime
-    last_sent_date = None
-    while True:
-        now = datetime.datetime.now()
-        if now.hour == 19 and now.minute == 0:
-            current_date = now.date()
-            if last_sent_date != current_date:
-                print(f"[DAILY BROADCAST] Starting daily 7 PM upgrade plans broadcast...")
-                await daily_plans_broadcast_task()
-                last_sent_date = current_date
-        await asyncio.sleep(30)
+    """Daily upgrade plans broadcast disabled by admin."""
+    return
 
 async def schedule_mirror_auto_updates():
     """
     Background task that checks all mirror sessions with active auto-schedules
-    every 60 seconds and triggers 1-Click Sync when the scheduled local time matches.
-    Timezone-aware: converts user's local time to UTC for accurate triggering.
+    every 25 seconds and triggers 1-Click Sync when the scheduled local time matches.
+    Timezone-aware: converts user's local time accurately with a 5-minute trigger window.
     """
     import datetime
     from toxic.core.mongo.db import (
@@ -210,9 +216,11 @@ async def schedule_mirror_auto_updates():
     from config import OWNER_ID
 
     print("[MirrorAutoScheduler] Daily auto-update scheduler started.")
+    # Wait 60 seconds after bot boot so Telegram sessions and peer caches initialize cleanly
+    await asyncio.sleep(60)
     while True:
         try:
-            now_utc = datetime.datetime.utcnow()
+            now_utc = datetime.datetime.now(datetime.timezone.utc)
             sessions = await get_all_scheduled_mirror_sessions()
             for sess in sessions:
                 try:
@@ -220,22 +228,22 @@ async def schedule_mirror_auto_updates():
                     if not auto_sched or not auto_sched.get("enabled"):
                         continue
 
-                    hour = auto_sched.get("hour", 0)
-                    minute = auto_sched.get("minute", 0)
+                    hour = int(auto_sched.get("hour", 0))
+                    minute = int(auto_sched.get("minute", 0))
                     tz_offset = float(auto_sched.get("tz_offset", 0))
                     last_run_date = auto_sched.get("last_run_date")
 
-                    # Convert user local time to UTC trigger time
-                    tz_offset_mins = int(tz_offset * 60)
-                    local_total_mins = hour * 60 + minute
-                    utc_total_mins = (local_total_mins - tz_offset_mins) % (24 * 60)
-                    utc_hour = utc_total_mins // 60
-                    utc_min = utc_total_mins % 60
+                    # Calculate current time in the user's selected timezone
+                    user_now = now_utc + datetime.timedelta(hours=tz_offset)
+                    user_today_str = user_now.strftime("%Y-%m-%d")
 
-                    now_str = now_utc.strftime("%Y-%m-%d")
-                    already_ran = (last_run_date == now_str)
+                    sched_total_mins = hour * 60 + minute
+                    user_total_mins = user_now.hour * 60 + user_now.minute
 
-                    if now_utc.hour == utc_hour and now_utc.minute == utc_min and not already_ran:
+                    # Check if scheduled time has arrived within a 5-minute window and not yet ran today
+                    diff_mins = user_total_mins - sched_total_mins
+                    
+                    if 0 <= diff_mins <= 5 and last_run_date != user_today_str:
                         src_chat_id = int(sess.get("src_chat_id", 0))
                         tgt_chat_id = int(sess.get("tgt_chat_id", 0))
                         user_id = int(sess.get("user_id", 0))
@@ -246,12 +254,12 @@ async def schedule_mirror_auto_updates():
                         if not src_chat_id or not tgt_chat_id or not user_id:
                             continue
 
-                        print(f"[MirrorAutoScheduler] Triggering auto-sync: {src_title} → {tgt_title} at {hour:02d}:{minute:02d} {tz_label}")
+                        print(f"[MirrorAutoScheduler] ⏰ Auto-sync triggered: '{src_title}' → '{tgt_title}' at {hour:02d}:{minute:02d} {tz_label} (Date: {user_today_str})")
 
-                        # Mark as run first to prevent duplicate triggers
-                        await update_mirror_schedule_last_run(src_chat_id, tgt_chat_id, now_str)
+                        # Mark as run immediately to prevent duplicate runs
+                        await update_mirror_schedule_last_run(src_chat_id, tgt_chat_id, user_today_str)
 
-                        # Notify user
+                        # Notify user / owners
                         owner_list = OWNER_ID if isinstance(OWNER_ID, list) else [OWNER_ID]
                         notify_targets = set(owner_list)
                         if user_id > 0:
@@ -268,22 +276,34 @@ async def schedule_mirror_auto_updates():
                                     f"📥 **Target:** `{tgt_title}`\n\n"
                                     f"🔄 Starting 1-Click Sync now..."
                                 )
-                                break
+                                if notify_msg:
+                                    break
                             except Exception:
                                 pass
 
-                        # Run the mirror sync
+                        # Run the mirror sync task
                         try:
-                            from toxic.modules.topic_mirror import run_topic_mirror
-                            asyncio.create_task(run_topic_mirror(
-                                user_id=user_id,
-                                src_chat_id=src_chat_id,
-                                tgt_chat_id=tgt_chat_id,
-                                mirror_all_topics=True,
-                                detected_topic_id=None,
-                                status_msg=notify_msg,
-                                is_auto_update=True
-                            ))
+                            sess_type = sess.get("session_type", "mirror")
+                            if sess_type == "c2t":
+                                from toxic.modules.topic_mirror import run_channel_to_topics_mirror
+                                asyncio.create_task(run_channel_to_topics_mirror(
+                                    user_id=user_id,
+                                    src_chat_id=src_chat_id,
+                                    tgt_chat_id=tgt_chat_id,
+                                    status_msg=notify_msg,
+                                    is_resume=True
+                                ))
+                            else:
+                                from toxic.modules.topic_mirror import run_topic_mirror
+                                asyncio.create_task(run_topic_mirror(
+                                    user_id=user_id,
+                                    src_chat_id=src_chat_id,
+                                    tgt_chat_id=tgt_chat_id,
+                                    mirror_all_topics=True,
+                                    detected_topic_id=None,
+                                    status_msg=notify_msg,
+                                    is_auto_update=True
+                                ))
                         except Exception as me:
                             print(f"[MirrorAutoScheduler] Mirror run error: {me}")
 
@@ -293,7 +313,7 @@ async def schedule_mirror_auto_updates():
         except Exception as e:
             print(f"[MirrorAutoScheduler] Scheduler error: {e}")
 
-        await asyncio.sleep(60)  # Check every minute
+        await asyncio.sleep(25)  # Check every 25 seconds for precise matching
 
 
 async def devggn_boot():
@@ -309,6 +329,13 @@ async def devggn_boot():
         await load_all_admins()
     except Exception as e:
         print(f"Failed to load thumbnails/admins: {e}")
+
+    # Reset global free access state on boot to ensure no accidental lingering free pass
+    try:
+        from toxic.core.mongo.plans_db import reset_global_free_access
+        await reset_global_free_access()
+    except Exception as e:
+        print(f"Failed to reset global free access: {e}")
 
     for all_module in ALL_MODULES:
         importlib.import_module("toxic.modules." + all_module)
@@ -334,13 +361,19 @@ Status: Running Successfully...
 """)
 
     asyncio.create_task(schedule_expiry_check())
-    asyncio.create_task(schedule_daily_plans_broadcast())
     asyncio.create_task(schedule_broadcast_task())
     asyncio.create_task(schedule_mirror_auto_updates())
+    asyncio.create_task(optimized_memory_cleanup())
     try:
-        from toxic.modules.smart_broadcast import sync_all_broadcast_destinations, smart_broadcast_background_scheduler
+        from toxic.modules.view_once import load_all_view_once_listeners
+        asyncio.create_task(load_all_view_once_listeners())
+    except Exception as e:
+        print(f"Failed to start view_once listeners loader: {e}")
+    try:
+        from toxic.modules.smart_broadcast import sync_all_broadcast_destinations, smart_broadcast_background_scheduler, smart_broadcast_dedicated_deletion_worker
         asyncio.create_task(sync_all_broadcast_destinations())
         asyncio.create_task(smart_broadcast_background_scheduler())
+        asyncio.create_task(smart_broadcast_dedicated_deletion_worker())
         print("[STARTUP AUTO-DETECT] Auto-discovery & sync for bot groups/channels started in background.")
     except Exception as e:
         print(f"Failed to start smart broadcast scanner/scheduler: {e}")

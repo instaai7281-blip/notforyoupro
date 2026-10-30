@@ -25,40 +25,131 @@ from pyrogram.raw.types import InputUserSelf
 
 from pyrogram.enums import ChatType, ParseMode
 
-@app.on_message(filters.private, group=-1)
-async def restrict_unauthorized_users(client, message: Message):
-    if not message.text and not message.media:
+
+
+import time
+
+_last_bio_prompt_time = {}
+
+@app.on_message(filters.private & ~filters.service, group=-2)
+async def free_user_strict_guard(client, message: Message):
+    """
+    Completely silences and turns off all command replies for Free Users.
+    The ONLY message sent from the bot's side is the Bio Verification message!
+    Admins and paid Premium users can interact normally.
+    """
+    if not message.from_user:
         return
-    if not await check_user_bio_access(client, message):
-        await message.stop_propagation()
+
+    user_id = message.from_user.id
+    from toxic.core.func import is_free_user
+    from toxic.core.mongo.db import is_admin_or_owner
+
+    if is_admin_or_owner(user_id):
+        return
+
+    if await is_free_user(user_id):
+        # Stop all operational commands/start handler propagation
+        message.stop_propagation()
+
+        # Send ONLY the official Bio Verification message (with 3s debounce per user to prevent flood)
+        now = time.time()
+        last_sent = _last_bio_prompt_time.get(user_id, 0)
+        if (now - last_sent) >= 3:
+            _last_bio_prompt_time[user_id] = now
+            try:
+                from toxic.core.bio_check import send_bio_verification_prompt
+                await send_bio_verification_prompt(client, message)
+            except Exception as e:
+                print(f"⚠️ Error sending bio prompt to free user {user_id}: {e}")
+        return
+
+
+@app.on_callback_query(group=-2)
+async def free_user_strict_callback_guard(client, query: CallbackQuery):
+    """
+    Guards callback queries for Free Users:
+    Allows Bio verification and Plan viewing callbacks so free users can complete verification or buy plans.
+    Silences all other operational buttons.
+    """
+    if not query.from_user:
+        return
+
+    user_id = query.from_user.id
+    from toxic.core.func import is_free_user
+    from toxic.core.mongo.db import is_admin_or_owner
+
+    if is_admin_or_owner(user_id):
+        return
+
+    if await is_free_user(user_id):
+        data = query.data or ""
+        allowed_prefixes = (
+            "verify_user_bio",
+            "bio_terms_info",
+            "back_to_bio_prompt",
+            "see_plan",
+            "plans",
+            "buy_plan",
+            "check_subscription",
+            "prem_"
+        )
+        if any(data.startswith(p) for p in allowed_prefixes):
+            return  # Allow bio verification and plan purchase callbacks
+
+        try:
+            await query.answer("🔒 Access Denied! Please complete Bio verification or upgrade to Premium.", show_alert=True)
+        except Exception:
+            pass
+        query.stop_propagation()
+        return
 
 
 @app.on_message(filters.command("start") & filters.private)
 async def start_cmd(client, message: Message):
+    user_id = message.from_user.id if message.from_user else message.chat.id
+
+
     join = await subscribe(client, message)
     if join == 1:
         return
 
     bot_username = get_bot_username()
     user_name = message.from_user.first_name if message.from_user else "User"
+    user_id = message.from_user.id if message.from_user else message.chat.id
+
+    from toxic.core.mongo.db import is_admin_or_owner
+    from toxic.core.func import is_free_user
+
+    if is_admin_or_owner(user_id):
+        membership_line = "👑 <b>Status:</b> <code>👑 Owner / Bot Admin (VIP)</code>"
+    elif not await is_free_user(user_id):
+        membership_line = "👑 <b>Status:</b> <code>🟢 Active Premium Member (PRO)</code>"
+    else:
+        membership_line = "👑 <b>Status:</b> <code>🔴 Free Account (Upgrade Required)</code>"
 
     start_text = (
         f"<blockquote><b>🚀 Welcome to Xtractor Bot Pro, {user_name}! 🖤</b></blockquote>\n\n"
-        f"<b>🤖 Bot Username:</b> <code>{bot_username}</code>\n\n"
+        f"<b>🤖 Bot Username:</b> <code>{bot_username}</code>\n"
+        f"{membership_line}\n\n"
         f"<blockquote><b>✨ WHAT I CAN DO FOR YOU:</b>\n"
         f"• <b>Ultra Fast Xtractor Pro:</b> Extract & sync content from private channels & groups!\n"
         f"• <b>Bulk Extraction (/batch):</b> Extract up to 5000 files in one single command!\n"
         f"• <b>Topic Mirror Forum Sync (/topicmirror):</b> Clone entire forum groups with auto-topic creation & 1-click update sync!\n"
-        f"• <b>Direct Topic Link Mirror (/topiclink):</b> Mirror from 1 topic link directly into another!\n"
+        f"• <b>Direct Topic Link Mirror (/topiclink):</b> Mirror from 1 topic link directly into another!\n"\
+        f"• <b>Channel to Topics (/c2t):</b> Auto-routes flat channel posts into organized forum topics by caption!\n"
         f"• <b>Custom Watermarking & Metadata:</b> PDF watermarks, video thumbnails, custom captions!</blockquote>\n\n"
-        f"<i>Just send any post link or tap a button below to get started! ☕🚀</i>"
+        f"<i>Tap a button below or send a link to get started! ☕🚀</i>"
     )
 
+    clean_bot_username = bot_username.lstrip("@")
     buttons = InlineKeyboardMarkup([
+        [InlineKeyboardButton("➕ Add Bot to Group 🚀", url=f"https://t.me/{clean_bot_username}?startgroup=true&admin=post_messages+manage_topics+delete_messages")],
         [InlineKeyboardButton("📁 Topic Mirror Hub", callback_data="tm_hub"), InlineKeyboardButton("🔗 Link Mirror", callback_data="tm_topiclink")],
         [InlineKeyboardButton("📘 User Guide", callback_data="guide_page_1"), InlineKeyboardButton("⚙️ Settings", callback_data="back_to_main")],
         [InlineKeyboardButton("💎 View Plans", callback_data="see_plan"), InlineKeyboardButton("💬 Contact Admin", url="https://t.me/CrazyxDeveloper_Bot")]
     ])
+
 
     image_url = "https://freeimage.host/i/n04TxVa"
     try:
@@ -75,9 +166,11 @@ async def start_cmd(client, message: Message):
 
 
 @app.on_message(filters.command("set"))
-async def set(_, message):
-    if message.from_user.id not in OWNER_ID:
-        await message.reply("You are not authorized to use this command.")
+async def set(client, message):
+    from toxic.core.mongo.db import is_admin_or_owner
+    user_id = message.from_user.id if message.from_user else 0
+    if not is_admin_or_owner(user_id):
+        await message.reply("❌ You are not authorized to use this command.")
         return
      
     await app.set_bot_commands([
@@ -97,6 +190,8 @@ async def set(_, message):
         BotCommand("settings", "⚙️ 𝗖𝘂𝘀𝘁𝗼𝗺𝗶𝘇𝗲 𝘀𝗲𝘁𝘁𝗶𝗻𝗴𝘀"),
         BotCommand("speedtest", "🚅 𝗦𝗽𝗲𝗲𝗱 𝘁𝗲𝘀𝘁"),
         BotCommand("terms", "📜 𝗧𝗲𝗿𝗺𝘀 & 𝗰𝗼𝗻𝗱𝗶𝘁𝗶𝗼𝗻𝘀"),
+        BotCommand("admin", "👑 𝗔𝗱𝗺𝗶𝗻 𝗖𝗼𝗻𝘁𝗿𝗼𝗹 𝗣𝗮𝗻𝗲𝗹"),
+        BotCommand("freeaccess", "🎁 𝗚𝗹𝗼𝗯𝗮𝗹 𝗙𝗿𝗲𝗲 𝗔𝗰𝗰𝗲𝘀𝘀 𝗠𝗼𝗱𝗲"),
         BotCommand("mirrorusers", "🎛️ 𝗠𝗮𝗻𝗮𝗴𝗲 𝗺𝗶𝗿𝗿𝗼𝗿 𝘂𝘀𝗲𝗿𝘀 (𝗢𝘄𝗻𝗲𝗿)"),
         BotCommand("addmirror", "👑 𝗔𝗱𝗱 𝗺𝗶𝗿𝗿𝗼𝗿 𝗮𝗰𝗰𝗲𝘀𝘀 (𝗔𝗱𝗺𝗶𝗻)"),
         BotCommand("remmirror", "👑 𝗥𝗲𝗺𝗼𝘃𝗲 𝗺𝗶𝗿𝗿𝗼𝗿 𝗮𝗰𝗰𝗲𝘀𝘀 (𝗔𝗱𝗺𝗶𝗻)"),
@@ -225,19 +320,33 @@ async def on_help_navigation(client, callback_query):
 @app.on_message(filters.command("terms") & filters.private)
 async def terms(client, message):
     terms_text = (
-        "> 📜 **Terms and Conditions** 📜\n\n"
-        "✨ We are not responsible for user deeds, and we do not promote copyrighted content. If any user engages in such activities, it is solely their responsibility.\n"
-        "✨ Upon purchase, we do not guarantee the uptime, downtime, or the validity of the plan. __Authorization and banning of users are at our discretion; we reserve the right to ban or authorize users at any time.__\n"
-        "✨ Payment to us **__does not guarantee__** authorization for the /batch command. All decisions regarding authorization are made at our discretion and mood.\n"
+        "<blockquote><b>📜 XTRACTOR PRO — TERMS & CONDITIONS</b></blockquote>\n\n"
+        "<b>1️⃣ General Fair Usage:</b>\n"
+        "• Services are strictly for personal backup and utility purposes.\n"
+        "• Spamming, flooding, or abusing resources results in permanent blacklist.\n\n"
+        "<b>2️⃣ Bio Verification & Auto-Tag Policy:</b>\n"
+        "• <b>🤖 Auto Verification Tag Only:</b> The required bio tag is strictly an automated verification identifier to validate genuine free access.\n"
+        "• <b>🛡️ No Liability / Not Responsible:</b> We are <b>NOT responsible</b> for any user's profile, bio contents, personal actions, or external activities. Setting the tag is entirely voluntary.\n"
+        "• Bio privacy must be set to <b>'Everybody'</b> (Settings ⚙️ ➔ Privacy & Security ➔ Bio) for the automated bot to verify the tag.\n"
+        "• Removing the tag revokes free bot access automatically.\n"
+        "• Paid Premium subscribers are 100% exempt from the bio requirement.\n\n"
+        "<b>3️⃣ Topic Mirror & Forum Sync:</b>\n"
+        "• Requires forum topics enabled in target group & proper admin rights.\n"
+        "• Telegram rate-limits (FloodWait) are strictly observed to protect accounts.\n\n"
+        "<b>4️⃣ Premium Subscription & Refund Policy:</b>\n"
+        "• All digital subscriptions (Topic Mirror VIP & SRC Plans) are non-refundable once activated.\n"
+        "• We do not host or promote copyrighted content; users bear sole responsibility for their tasks.\n"
+        "• Service uptime and authorization remain at management discretion.\n\n"
+        "<i>By using this bot, you explicitly agree to all terms stated above.</i>"
     )
-     
+    
     buttons = InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("📋 See Plans", callback_data="see_plan")],
-            [InlineKeyboardButton("💬 Contact Now", url="https://t.me/CrazyxDeveloper_Bot")],
+            [InlineKeyboardButton("💎 View Plans", callback_data="see_plan"), InlineKeyboardButton("📜 Bio Setup Guide", callback_data="bio_terms_info")],
+            [InlineKeyboardButton("💬 Contact Support", url="https://t.me/CrazyxDeveloper_Bot")],
         ]
     )
-    await message.reply_text(terms_text, reply_markup=buttons)
+    await message.reply_text(terms_text, reply_markup=buttons, parse_mode=ParseMode.HTML)
  
  
 def get_bot_username():
@@ -248,85 +357,183 @@ def get_bot_username():
 
 @app.on_message(filters.command(["plan", "plans"]))
 async def plan(client, message):
-    bot_username = get_bot_username()
-    plan_text = (
-        "<blockquote><b>💎 XTRACTOR BOT PRO — SUBSCRIPTION PLANS 💎</b></blockquote>\n\n"
-        "<b>🔥 Unlock Unlimited High-Speed Extraction & Topic Syncing:</b>\n\n"
-        "<blockquote><b>✨ STANDARD PREMIUM PLANS:</b>\n"
-        "• <b>🥉 7 Days Plan:</b> ₹49  |  $0.70 USDT\n"
-        "• <b>🥈 15 Days Plan:</b> ₹89  |  $1.20 USDT\n"
-        "• <b>🥇 30 Days Plan:</b> ₹149  |  $1.90 USDT 🚀 <i>(Best Value)</i>\n"
-        "• <b>💎 3 Months Plan:</b> ₹399  |  $5.00 USDT\n"
-        "<i>Includes: High-Speed Batch extraction (/batch up to 5000 files), 0s Cooldown, Custom Thumbs & Watermarks!</i></blockquote>\n\n"
-        "<blockquote><b>👑 SPECIAL TOPIC MIRROR PLAN (SEPARATE ACCESS):</b>\n"
-        "• <b>📁 Topic Mirroring & Auto-Folder Plan:</b> Active via Admin\n"
-        "<i>Includes: Forum Topic Cloning (/topicmirror), Auto Topic Creation & Mapping, Live Topic Scan & Compare (/scan_mirror), 1-Click Sync & Update Missing Content (/sync_mirror), Auto Group Bio & Disclaimer Tagging!</i>\n\n"
-        "⚠️ <b>Important Note:</b> Topic Mirroring feature requires dedicated mirror access. Standard premium access does NOT include Topic Mirroring. Admin adds mirror access separately via <code>/addmirror</code>.</blockquote>\n\n"
-        "<blockquote><b>💳 ACCEPTED PAYMENT METHODS:</b>\n"
-        "• UPI (GPay / PhonePe / Paytm / BHIM)\n"
-        "• Crypto (USDT BEP20 / TRC20 / TON)\n"
-        "• Amazon Gift Cards</blockquote>\n\n"
-        "📲 <b>To Buy Access:</b> Click <b>Contact Admin</b> below!"
-    )
-   
-    buttons = InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("💬 Buy Plan / Contact Admin", url="https://t.me/CrazyxDeveloper_Bot")],
-            [InlineKeyboardButton("📘 User Guide", callback_data="guide_page_1"), InlineKeyboardButton("📜 Terms", callback_data="see_terms")],
-        ]
-    )
-    await message.reply_text(plan_text, reply_markup=buttons, parse_mode=ParseMode.HTML)
+    chat_id = message.chat.id
+
+    rich_plans_text = """# 💎 𝗫𝗧𝗥𝗔𝗖𝗧𝗢𝗥 𝗕𝗢𝗧 𝗣𝗥𝗢 — 𝗦𝗨𝗕𝗦𝗖𝗥𝗜𝗣𝗧𝗜𝗢𝗡 𝗣𝗟𝗔𝗡𝗦 🚀
+
+> ⚡ **Select your preferred tier to unlock ultimate server-speed extraction & cloning!**
+
+---
+
+## 👑 𝟭. 𝗧𝗢𝗣𝗜𝗖 𝗖𝗟𝗢𝗡𝗘 / 𝗠𝗜𝗥𝗥𝗢𝗥 𝗣𝗟𝗔𝗡 (𝗩𝗜𝗣 ⭐)
+
+> 🏆 **Full Group & Forum Topic Cloning Engine**
+
+- [x] 🚀 **1-Click Clone Supergroup** with all Forum Topics
+- [x] 🎯 **Topic-to-Topic** exact direct sync & forwarding
+- [x] ⚡ **1-Click Live Scan & Update** (Instant Sync)
+- [x] ⏰ **Daily Auto-Update** (Timezone-Aware Scheduled Run)
+- [x] 📌 **Auto-Pinning** & Smart Checkpoint Resume
+- [x] 🔑 **Includes FULL Save Restricted Content (SRC) Access**
+- [x] ⚡ **Priority Processing Slots** & Maximum Turbo Speed
+
+### 💰 Topic Mirror Pricing:
+
+| 🗓 **Duration** | 🇮🇳 **INR** | 🌐 **USDT / USD** | 🏷 **Access** |
+|:---:|:---:|:---:|:---:|
+| **1 Month** | `₹299` | `$4.00` | 🟢 Pro Tier |
+| **3 Months** | `₹599` | `$8.00` | 👑 Best Value |
+
+---
+
+## 📥 𝟮. 𝗦𝗔𝗩𝗘 𝗥𝗘𝗦𝗧𝗥𝗜𝗖𝗧𝗘𝗗 𝗖𝗢𝗡𝗧𝗘𝗡𝗧 (𝗦𝗥𝗖) 𝗣𝗟𝗔𝗡
+
+> 🔓 **Standard Plan — Private Channels & Bulk Media Downloader**
+
+- [x] 🔓 Download & forward **restricted / forward-protected** content
+- [x] ⚡ **Zero-Bandwidth Server Copy** Mode (Ultra Fast)
+- [x] 🖼 **Custom Thumbnail** set/delete system
+- [x] 📝 **Custom Captions** & Watermark Tags
+- [x] 📁 **Media Filtering** & Clean Surrogates/Text
+- [x] 🚀 High-speed direct downloads & uploads
+
+### 💰 SRC Plan Pricing:
+
+| 🗓 **Duration** | 🇮🇳 **INR** | 🌐 **USDT / USD** | 🏷 **Access** |
+|:---:|:---:|:---:|:---:|
+| **1 Month** | `₹149` | `$2.00` | ⚡ Standard |
+| **3 Months** | `₹299` | `$4.00` | 💎 Popular |
+
+---
+
+### 💳 𝗛𝗢𝗪 𝗧𝗢 𝗕𝗨𝗬 & 𝗔𝗖𝗧𝗜𝗩𝗔𝗧𝗘 𝗜𝗡𝗦𝗧𝗔𝗡𝗧𝗟𝗬:
+
+> 1️⃣ Contact Owner with your chosen **Plan Name**
+> 2️⃣ Send payment screenshot (UPI / Crypto USDT / Amazon Gift Card)
+> 3️⃣ ⚡ **Access activated within 2 minutes!**
+
+👉 **Owner / 24x7 Support:** [𝗖𝗿𝗮𝘇𝘆𝘅𝗗𝗲𝘃𝗲𝗹𝗼𝗽𝗲𝗿_𝗕𝗼𝘁](https://t.me/CrazyxDeveloper_Bot) 🛡️"""
+
+    buttons = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💬 Buy Plan / Contact Admin", url="https://t.me/CrazyxDeveloper_Bot")],
+        [InlineKeyboardButton("📘 User Guide", callback_data="guide_page_1"), InlineKeyboardButton("📜 Terms", callback_data="see_terms")],
+    ])
+
+    sent_rich = False
+    try:
+        from toxic import sex
+        from telethon import functions
+        from telethon.tl.types import InputRichMessageMarkdown
+        if sex and sex.is_connected():
+            await sex(functions.messages.SendMessageRequest(
+                peer=chat_id,
+                message="Subscription Plans",
+                rich_message=InputRichMessageMarkdown(markdown=rich_plans_text),
+            ))
+            sent_rich = True
+    except Exception as e:
+        print(f"[Plans] Telethon rich message error, falling back: {e}")
+
+    if sent_rich:
+        try:
+            await message.reply_text("👇 **Choose an option or purchase access:**", reply_markup=buttons)
+        except Exception:
+            pass
+    else:
+        # Fallback to HTML
+        html_plans = (
+            "<blockquote><b>💎 XTRACTOR BOT PRO — SUBSCRIPTION PLANS 💎</b></blockquote>\n\n"
+            "<b>👑 TOPIC CLONE / MIRROR PLAN (VIP ⭐):</b>\n"
+            "• 1 Month: <b>₹299 / $4 USD</b>\n"
+            "• 3 Months: <b>₹599 / $8 USD</b>\n"
+            "<i>(Includes 1-Click Supergroup & Forum Topic Cloning, Auto-Pinning, Daily Auto-Update + Full SRC Access!)</i>\n\n"
+            "<b>📥 SAVE RESTRICTED CONTENT (SRC) PLAN:</b>\n"
+            "• 1 Month: <b>₹149 / $2 USD</b>\n"
+            "• 3 Months: <b>₹299 / $4 USD</b>\n"
+            "<i>(Includes Fast Server Copy, Batch 5000 files, Custom Thumbs & Captions)</i>\n\n"
+            "💳 <b>Payment Methods:</b> UPI, Crypto (USDT BEP20/TRC20/TON), Amazon Gift Cards\n"
+            "📲 <b>Contact:</b> @CrazyxDeveloper_Bot"
+        )
+        await message.reply_text(html_plans, reply_markup=buttons, parse_mode=ParseMode.HTML)
+
+
+@app.on_callback_query(filters.regex(r"^check_my_sub$"))
+async def check_my_sub_callback_handler(client, query: CallbackQuery):
+    user_id = query.from_user.id
+    from toxic.core.func import is_free_user
+    if await is_free_user(user_id):
+        await query.answer(
+            "❌ No active subscription found on your account!\n\n"
+            "Tap 'View Pricing & Plans' to purchase or contact @CrazyxDeveloper_Bot",
+            show_alert=True
+        )
+    else:
+        await query.answer(
+            "✅ Active Subscription Found!\n\n"
+            "You have full access to bot features. Enjoy PRO access!",
+            show_alert=True
+        )
 
 
 @app.on_callback_query(filters.regex("see_plan"))
 async def see_plan(client, callback_query):
-    bot_username = get_bot_username()
-    plan_text = (
+    buttons = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💬 Buy Plan / Contact Admin", url="https://t.me/CrazyxDeveloper_Bot")],
+        [InlineKeyboardButton("📘 User Guide", callback_data="guide_page_1"), InlineKeyboardButton("📜 Terms", callback_data="see_terms")],
+    ])
+    html_plans = (
         "<blockquote><b>💎 XTRACTOR BOT PRO — SUBSCRIPTION PLANS 💎</b></blockquote>\n\n"
-        "<b>🔥 Unlock Unlimited High-Speed Extraction & Topic Syncing:</b>\n\n"
-        "<blockquote><b>✨ STANDARD PREMIUM PLANS:</b>\n"
-        "• <b>🥉 7 Days Plan:</b> ₹49  |  $0.70 USDT\n"
-        "• <b>🥈 15 Days Plan:</b> ₹89  |  $1.20 USDT\n"
-        "• <b>🥇 30 Days Plan:</b> ₹149  |  $1.90 USDT 🚀 <i>(Best Value)</i>\n"
-        "• <b>💎 3 Months Plan:</b> ₹399  |  $5.00 USDT\n"
-        "<i>Includes: High-Speed Batch extraction (/batch up to 5000 files), 0s Cooldown, Custom Thumbs & Watermarks!</i></blockquote>\n\n"
-        "<blockquote><b>👑 SPECIAL TOPIC MIRROR PLAN (SEPARATE ACCESS):</b>\n"
-        "• <b>📁 Topic Mirroring & Auto-Folder Plan:</b> Active via Admin\n"
-        "<i>Includes: Forum Topic Cloning (/topicmirror), Auto Topic Creation & Mapping, Live Topic Scan & Compare (/scan_mirror), 1-Click Sync & Update Missing Content (/sync_mirror), Auto Group Bio & Disclaimer Tagging!</i>\n\n"
-        "⚠️ <b>Important Note:</b> Topic Mirroring feature requires dedicated mirror access. Standard premium access does NOT include Topic Mirroring. Admin adds mirror access separately via <code>/addmirror</code>.</blockquote>\n\n"
-        "<blockquote><b>💳 ACCEPTED PAYMENT METHODS:</b>\n"
-        "• UPI (GPay / PhonePe / Paytm / BHIM)\n"
-        "• Crypto (USDT BEP20 / TRC20 / TON)\n"
-        "• Amazon Gift Cards</blockquote>\n\n"
-        "📲 <b>To Buy Access:</b> Click <b>Contact Admin</b> below!"
+        "<b>👑 TOPIC CLONE / MIRROR PLAN (VIP ⭐):</b>\n"
+        "• 1 Month: <b>₹299 / $4 USD</b>\n"
+        "• 3 Months: <b>₹599 / $8 USD</b>\n"
+        "<i>(Includes 1-Click Supergroup & Forum Topic Cloning, Auto-Pinning, Daily Auto-Update + Full SRC Access!)</i>\n\n"
+        "<b>📥 SAVE RESTRICTED CONTENT (SRC) PLAN:</b>\n"
+        "• 1 Month: <b>₹149 / $2 USD</b>\n"
+        "• 3 Months: <b>₹299 / $4 USD</b>\n"
+        "<i>(Includes Fast Server Copy, Batch 5000 files, Custom Thumbs & Captions)</i>\n\n"
+        "💳 <b>Payment Methods:</b> UPI, Crypto (USDT BEP20/TRC20/TON), Amazon Gift Cards\n"
+        "📲 <b>Contact:</b> @CrazyxDeveloper_Bot"
     )
-     
-    buttons = InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("💬 Buy Plan / Contact Admin", url="https://t.me/CrazyxDeveloper_Bot")],
-            [InlineKeyboardButton("📘 User Guide", callback_data="guide_page_1"), InlineKeyboardButton("📜 Terms", callback_data="see_terms")],
-        ]
-    )
-    await callback_query.message.edit_text(plan_text, reply_markup=buttons, parse_mode=ParseMode.HTML)
+    try:
+        await callback_query.message.edit_text(html_plans, reply_markup=buttons, parse_mode=ParseMode.HTML)
+    except Exception:
+        await callback_query.message.reply_text(html_plans, reply_markup=buttons, parse_mode=ParseMode.HTML)
+
+
 
 
 @app.on_callback_query(filters.regex("see_terms"))
 async def see_terms(client, callback_query):
     terms_text = (
-        "<blockquote><b>📜 TERMS AND CONDITIONS</b></blockquote>\n\n"
-        "<blockquote>• <b>Personal Use Only:</b> The bot services are intended strictly for personal utility and backup purposes.\n"
-        "• <b>Fair Usage:</b> Spamming or abusing system resources may result in authorization suspension.\n"
-        "• <b>No Refund Policy:</b> Payments are final once digital premium access is activated.\n"
-        "• <b>Compliance:</b> Users are responsible for ensuring compliance with Telegram's Terms of Service.</blockquote>"
+        "<blockquote><b>📜 XTRACTOR PRO — TERMS & CONDITIONS</b></blockquote>\n\n"
+        "<b>1️⃣ General Fair Usage:</b>\n"
+        "• Services are strictly for personal backup and utility purposes.\n"
+        "• Abuse, spamming, or resource exploitation leads to instant blacklist.\n\n"
+        "<b>2️⃣ Bio Verification & Auto-Tag Policy:</b>\n"
+        "• <b>🤖 Auto Verification Tag Only:</b> Required bio tag is solely an automated identifier to unlock free tier access.\n"
+        "• <b>🛡️ No Liability / Not Responsible:</b> We are <b>NOT responsible</b> for any user's profile, bio contents, personal actions, or external activities. Setting the tag is entirely voluntary.\n"
+        "• Bio privacy must be set to <b>'Everybody'</b> (Settings ⚙️ ➔ Privacy ➔ Bio) so our bot can read the tag.\n"
+        "• Removing the tag revokes access immediately upon next check.\n"
+        "• Paid Premium members are completely exempt.\n\n"
+        "<b>3️⃣ Topic Mirror & Forum Sync:</b>\n"
+        "• Requires forum topics enabled in target group & proper admin rights.\n"
+        "• Rate-limiting protects accounts from flood bans.\n\n"
+        "<b>4️⃣ Premium Subscription & Refund Policy:</b>\n"
+        "• Digital plans are non-refundable once activated.\n"
+        "• We do not host copyrighted files; users bear full responsibility.\n\n"
+        "<i>By using this bot, you explicitly agree to all terms stated above.</i>"
     )
-     
+    
     buttons = InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("💎 View Premium Plans", callback_data="see_plan")],
-            [InlineKeyboardButton("💬 Contact Admin", url="https://t.me/CrazyxDeveloper_Bot")],
+            [InlineKeyboardButton("💎 View Plans", callback_data="see_plan"), InlineKeyboardButton("📜 Bio Setup Guide", callback_data="bio_terms_info")],
+            [InlineKeyboardButton("💬 Contact Support", url="https://t.me/CrazyxDeveloper_Bot")],
         ]
     )
-    await callback_query.message.edit_text(terms_text, reply_markup=buttons, parse_mode=ParseMode.HTML)
+    try:
+        await callback_query.message.edit_text(terms_text, reply_markup=buttons, parse_mode=ParseMode.HTML)
+    except Exception:
+        await callback_query.message.reply_text(terms_text, reply_markup=buttons, parse_mode=ParseMode.HTML)
 
 
 @app.on_callback_query(filters.regex("check_subscription"))
@@ -358,25 +565,101 @@ async def check_subscription_callback(client, callback_query: CallbackQuery):
 @app.on_message(filters.command("guide"))
 async def guide_command(_, message: Message):
     bot_username = get_bot_username()
-    guide_p1_text = (
-        f"<b>📘 USER GUIDE — XTRACTOR BOT PRO (1/3)</b>\n\n"
-        f"<b>🤖 Bot Username:</b> <code>{bot_username}</code>\n\n"
-        "<b>✨ 1. PUBLIC CHANNEL / GROUP POSTS:</b>\n"
-        f"Send any public Telegram post link directly to <code>{bot_username}</code>.\n"
-        "<i>Example:</i> <code>https://t.me/public_channel/1234</code>\n\n"
-        "<b>🔒 2. PRIVATE CHANNEL / GROUP POSTS (XTRACTOR PRO):</b>\n"
-        f"1️⃣ Send <code>/login</code> to <code>{bot_username}</code>.\n"
-        "2️⃣ Enter your phone number with country code: <code>+91XXXXXXXXXX</code>\n"
-        "3️⃣ Check Telegram official chat for your OTP code.\n"
-        "4️⃣ Enter OTP with <b>spaces between digits</b> (e.g., for OTP <code>54321</code> ➔ enter <code>5 4 3 2 1</code>).\n"
-        "5️⃣ Once logged in, send private links or use <code>/batch</code> for bulk extraction!"
-    )
+    chat_id = message.chat.id
+
+    clean_bot_username = bot_username.lstrip("@")
+    rich_guide_text = f"""# 📘 𝗫𝗧𝗥𝗔𝗖𝗧𝗢𝗥 𝗕𝗢𝗧 𝗣𝗥𝗢 — 𝗨𝗦𝗘𝗥 𝗚𝗨𝗜𝗗𝗘 🚀
+
+> ⚡ **Ultimate handbook for extracting restricted content, cloning forum topics, and batch downloading.**
+
+---
+
+## 👑 𝟭. 𝗧𝗢𝗣𝗜𝗖 𝗠𝗜𝗥𝗥𝗢𝗥 & 𝗙𝗢𝗥𝗨𝗠 𝗖𝗟𝗢𝗡𝗜𝗡𝗚
+- [x] **Enable Topics** in your target group settings.
+- [x] Add @{clean_bot_username} as **Admin** with full permissions.
+- [x] Send `/topicmirror` ➔ Pick your source & target group.
+- [x] Use `/scan_mirror` for live scan & `/sync_mirror` for **1-click auto-update**!
+- [x] Set **Daily Auto-Update** (Timezone-Aware) to auto-sync daily!
+
+---
+
+## 🔓 𝟮. 𝗦𝗔𝗩𝗘 𝗥𝗘𝗦𝗧𝗥𝗜𝗖𝗧𝗘𝗗 𝗖𝗢𝗡𝗧𝗘𝗡𝗧 (𝗦𝗥𝗖)
+- [x] **Step 1:** Send `/login` to link your Telegram account session.
+- [x] **Step 2:** Paste any restricted channel / group message link (`https://t.me/c/...`).
+- [x] **Step 3:** Use `/batch` to clone up to **5,000 files in one go**!
+- [x] **Step 4:** Automatic thumbnail, watermark, and PDF tags applied seamlessly!
+
+---
+
+## 🛠️ 𝗞𝗘𝗬 𝗖𝗢𝗠𝗠𝗔𝗡𝗗𝗦 𝗖𝗛𝗘𝗔𝗧𝗦𝗛𝗘𝗘𝗧
+
+| ⌨️ **Command** | ⚡ **What it does** |
+|:---|:---|
+| `/topicmirror` | Supergroup + Forum Topic cloner engine |
+| `/batch` | Range extraction (Start ➔ End post) |
+| `/settings` | Customize thumbnail, captions, & watermarks |
+| `/plans` | View premium subscription tiers |
+| `/login` | Access private channels with your session |
+
+---
+
+👉 **Owner / 24x7 Support:** [𝗖𝗿𝗮𝘇𝘆𝘅𝗗𝗲𝘃𝗲𝗹𝗼𝗽𝗲𝗿_𝗕𝗼𝘁](https://t.me/CrazyxDeveloper_Bot) 🛡️"""
+
+
     buttons = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📂 Topic Mirror Guide ➔", callback_data="guide_page_2")],
-        [InlineKeyboardButton("⚡ Extra Features", callback_data="guide_page_3"), InlineKeyboardButton("💎 View Plans", callback_data="see_plan")],
-        [InlineKeyboardButton("💬 Contact Admin", url="https://t.me/CrazyxDeveloper_Bot")]
+        [
+            InlineKeyboardButton("💎 View Plans", callback_data="see_plan"),
+            InlineKeyboardButton("📂 Forum Mirror Details", callback_data="guide_page_2")
+        ],
+        [
+            InlineKeyboardButton("📜 Terms of Service", callback_data="see_terms"),
+            InlineKeyboardButton("💬 Contact Admin", url="https://t.me/CrazyxDeveloper_Bot")
+        ]
     ])
-    await message.reply_text(guide_p1_text, reply_markup=buttons, parse_mode=ParseMode.HTML)
+
+    # Try sending via Telethon's Native Rich Message Engine first
+    sent_rich = False
+    try:
+        from toxic import sex
+        from telethon import functions
+        from telethon.tl.types import InputRichMessageMarkdown
+        if sex and sex.is_connected():
+            await sex(functions.messages.SendMessageRequest(
+                peer=chat_id,
+                message="User Guide",
+                rich_message=InputRichMessageMarkdown(markdown=rich_guide_text),
+            ))
+            sent_rich = True
+    except Exception as e:
+        print(f"[Guide] Telethon rich message error, falling back: {e}")
+
+    # Send or follow up with interactive navigation buttons
+    if sent_rich:
+        try:
+            await message.reply_text("👇 **Quick Actions & Navigation:**", reply_markup=buttons)
+        except Exception:
+            pass
+    else:
+        # Fallback to HTML formatted guide
+        html_guide = (
+            f"<b>📘 USER GUIDE — XTRACTOR BOT PRO</b>\n\n"
+            f"<b>🤖 Bot Username:</b> <code>{bot_username}</code>\n\n"
+            "<blockquote><b>🔓 1. SAVE RESTRICTED CONTENT (SRC):</b>\n"
+            "• Send <code>/login</code> to link your Telegram account.\n"
+            "• Send restricted private links (<code>https://t.me/c/...</code>) directly.\n"
+            "• Use <code>/batch</code> to clone up to 5,000 files in one go!</blockquote>\n\n"
+            "<blockquote><b>👑 2. TOPIC MIRROR & FORUM CLONING:</b>\n"
+            "• Enable Topics in your target group and add bot as Admin.\n"
+            "• Send <code>/topicmirror</code> to clone forum supergroups topic-by-topic.\n"
+            "• Use <code>/scan_mirror</code> & <code>/sync_mirror</code> for 1-click updates!</blockquote>\n\n"
+            "<blockquote><b>🛠️ KEY COMMANDS:</b>\n"
+            "• <code>/batch</code> — Range post extraction\n"
+            "• <code>/topicmirror</code> — Supergroup topic mirror\n"
+            "• <code>/sync_mirror</code> — 1-Click update missing files\n"
+            "• <code>/settings</code> — Thumbnails, captions & watermarks\n"
+            "• <code>/plans</code> — View VIP subscription plans</blockquote>"
+        )
+        await message.reply_text(html_guide, reply_markup=buttons, parse_mode=ParseMode.HTML)
 
 
 @app.on_callback_query(filters.regex("^guide_page_1$"))
@@ -422,7 +705,8 @@ async def guide_page_2(_, query: CallbackQuery):
         "<blockquote><b>🔎 LIVE SCAN & 1-CLICK SYNC (UPDATE MISSING CONTENT):</b>\n"
         "• <b>Scan & Compare (<code>/scan_mirror</code>):</b> Scans source & target groups, showing exact extracted vs remaining missing content per topic.\n"
         "• <b>1-Click Sync (<code>/sync_mirror</code>):</b> Automatically extracts missing posts without duplicating existing content!\n"
-        "• <b>Topic Link Mirror (<code>/topiclink</code>):</b> Mirror content from one specific source topic link directly to another target topic link!</blockquote>\n\n"
+        "• <b>Topic Link Mirror (<code>/topiclink</code>):</b> Mirror content from one specific source topic link directly to another target topic link!\n"\
+        "• <b>Channel ➔ Topics (<code>/c2t</code>):</b> Auto-detects topics from captions & routes channel media into organized forum topics!</blockquote>\n\n"
 
         "⚠️ <i>Note: Requires active Topic Mirror Plan. Contact Admin via /plans to enable access.</i>"
     )

@@ -45,12 +45,81 @@ async def replace_caption(user_id, replace_txt, to_replace):
     else:
         await db.insert_one({"_id": user_id, "replace_txt": replace_txt, "to_replace": to_replace})
 
-async def set_session(user_id, session):
+def get_current_bot_name() -> str:
+    try:
+        from toxic import app
+        if getattr(app, "me", None) and app.me.username:
+            return app.me.username
+    except Exception:
+        pass
+    return "default_bot"
+
+async def get_user_session(user_id: int, bot_name: str = None, allow_fallback: bool = True):
+    """Retrieves session string. Seamlessly shares session across all bots or fallbacks cleanly."""
+    if not bot_name:
+        bot_name = get_current_bot_name()
     data = await get_data(user_id)
+    if not data:
+        return None
+    sessions = data.get("sessions")
+    if isinstance(sessions, dict):
+        if bot_name in sessions and sessions[bot_name]:
+            return sessions[bot_name]
+        if allow_fallback:
+            # Fallback to any valid session saved by another bot
+            for b_name, s_val in sessions.items():
+                if s_val:
+                    return s_val
+    return data.get("session") if allow_fallback else None
+
+async def set_session(user_id, session, bot_name: str = None):
+    """Saves session with dedicated per-bot partition and shared fallback so all bots can access it."""
+    if not bot_name:
+        bot_name = get_current_bot_name()
+    data = await get_data(user_id)
+    update_doc = {
+        "session": session,
+        f"sessions.{bot_name}": session,
+        "assigned_bot": bot_name
+    }
     if data and data.get("_id"):
-        await db.update_one({"_id": user_id}, {"$set": {"session": session}})
+        await db.update_one({"_id": user_id}, {"$set": update_doc})
     else:
-        await db.insert_one({"_id": user_id, "session": session})
+        init_doc = {"_id": user_id, "session": session, "sessions": {bot_name: session}, "assigned_bot": bot_name}
+        await db.insert_one(init_doc)
+
+async def remove_user_session(user_id, bot_name: str = None):
+    """Removes user session for a specific bot without wiping the shared session for other bots."""
+    if not bot_name:
+        bot_name = get_current_bot_name()
+    try:
+        data = await get_data(user_id)
+        if not data:
+            return
+        sessions = data.get("sessions", {})
+        if isinstance(sessions, dict):
+            remaining = {k: v for k, v in sessions.items() if k != bot_name and v}
+        else:
+            remaining = {}
+        
+        # If no other bot sessions remain, wipe session as well
+        if not remaining:
+            await db.update_one(
+                {"_id": user_id},
+                {"$unset": {f"sessions.{bot_name}": "", "session": ""}}
+            )
+        else:
+            # Promote another remaining session to global session so other bots keep working
+            next_session = next(iter(remaining.values()))
+            await db.update_one(
+                {"_id": user_id},
+                {
+                    "$unset": {f"sessions.{bot_name}": ""},
+                    "$set": {"session": next_session}
+                }
+            )
+    except Exception:
+        pass
 
 async def clean_words(user_id, new_clean_words):
     data = await get_data(user_id)
@@ -276,15 +345,45 @@ async def get_all_admins_db():
         await load_all_admins()
     return list(BOT_ADMINS)
 
-def is_admin_or_owner(user_id: int) -> bool:
+def is_admin_or_owner(user_id) -> bool:
+    if not user_id:
+        return False
     from config import OWNER_ID
-    owner_list = OWNER_ID if isinstance(OWNER_ID, list) else [OWNER_ID]
-    return (user_id in owner_list) or (user_id in BOT_ADMINS)
+    owner_list = OWNER_ID if isinstance(OWNER_ID, (list, tuple, set)) else [OWNER_ID]
+    uid_str = str(user_id).strip()
+    try:
+        uid_int = int(user_id)
+    except Exception:
+        uid_int = None
 
-def is_owner(user_id: int) -> bool:
+    for o in owner_list:
+        if o is not None:
+            if str(o).strip() == uid_str or (uid_int is not None and o == uid_int):
+                return True
+
+    for a in BOT_ADMINS:
+        if a is not None:
+            if str(a).strip() == uid_str or (uid_int is not None and a == uid_int):
+                return True
+
+    return False
+
+def is_owner(user_id) -> bool:
+    if not user_id:
+        return False
     from config import OWNER_ID
-    owner_list = OWNER_ID if isinstance(OWNER_ID, list) else [OWNER_ID]
-    return user_id in owner_list
+    owner_list = OWNER_ID if isinstance(OWNER_ID, (list, tuple, set)) else [OWNER_ID]
+    uid_str = str(user_id).strip()
+    try:
+        uid_int = int(user_id)
+    except Exception:
+        uid_int = None
+
+    for o in owner_list:
+        if o is not None:
+            if str(o).strip() == uid_str or (uid_int is not None and o == uid_int):
+                return True
+    return False
 
 from pyrogram import filters
 
@@ -292,6 +391,12 @@ async def _admin_filter_func(_, __, update):
     user = getattr(update, "from_user", None) or getattr(update, "sender_chat", None)
     if not user:
         return False
+    global BOT_ADMINS
+    if not BOT_ADMINS:
+        try:
+            await load_all_admins()
+        except Exception:
+            pass
     return is_admin_or_owner(user.id)
 
 admin_filter = filters.create(_admin_filter_func)
@@ -492,8 +597,9 @@ async def get_all_active_userbots():
     except Exception:
         pass
 
-    # 3. Add owner userbot session from MongoDB (prioritized and timeout protected)
+    # 3. Add owner userbot session from userbot_manager if active in this bot process
     try:
+        from toxic.core.userbot_manager import get_active_userbot_sync
         owner_list = OWNER_ID if isinstance(OWNER_ID, list) else [OWNER_ID]
         for oid in owner_list:
             if not oid:
@@ -502,34 +608,9 @@ async def get_all_active_userbots():
                 oid_int = int(oid)
             except ValueError:
                 continue
-
-            # Check if already connected
-            already_connected = False
-            for c in clients:
-                try:
-                    if getattr(c, "me", None) and c.me.id == oid_int:
-                        already_connected = True
-                        break
-                except Exception:
-                    pass
-
-            if not already_connected:
-                user_doc = await db.find_one({"_id": oid_int, "session": {"$exists": True, "$ne": None}})
-                if user_doc and user_doc.get("session"):
-                    try:
-                        ub = Client(
-                            f"ub_owner_{oid_int}",
-                            api_id=API_ID,
-                            api_hash=API_HASH,
-                            session_string=user_doc.get("session"),
-                            in_memory=True,
-                            no_updates=True,
-                            max_concurrent_transmissions=16
-                        )
-                        await asyncio.wait_for(ub.start(), timeout=4.0)
-                        clients.append(ub)
-                    except Exception:
-                        pass
+            active_ub = get_active_userbot_sync(oid_int)
+            if active_ub and getattr(active_ub, "is_connected", False) and active_ub not in clients:
+                clients.append(active_ub)
     except Exception as e:
         print(f"[DB] Error loading userbot pool: {e}")
 
@@ -831,5 +912,55 @@ async def reset_link_mirror_checkpoint(src_chat_id, src_topic_id, tgt_chat_id, t
     """Resets (deletes) checkpoint for a link-mirror route so next run starts fresh."""
     try:
         await link_mirror_db.delete_one({"_id": _lm_key(src_chat_id, src_topic_id, tgt_chat_id, tgt_topic_id)})
+    except Exception:
+        pass
+
+
+async def is_user_verified(user_id: int) -> bool:
+    """Safe check if user has verified session/token or bio access."""
+    try:
+        from toxic.modules.shrink import is_user_verified as shrink_is_verified
+        return await shrink_is_verified(user_id)
+    except Exception:
+        return False
+
+
+
+# CHANNEL TO TOPIC CHECKPOINTS
+# Keyed by src_chat_id + tgt_chat_id
+c2t_db = mongo.user_data.c2t_checkpoints
+
+def _c2t_key(src_chat_id, tgt_chat_id) -> str:
+    return f"{src_chat_id}_{tgt_chat_id}"
+
+async def get_c2t_checkpoint(src_chat_id, tgt_chat_id) -> int:
+    """Returns the last copied message ID for channel-to-topics mirror."""
+    try:
+        doc = await c2t_db.find_one({"_id": _c2t_key(src_chat_id, tgt_chat_id)})
+        return doc.get("last_msg_id", 0) if doc else 0
+    except Exception:
+        return 0
+
+async def save_c2t_checkpoint(src_chat_id, tgt_chat_id, last_msg_id: int):
+    """Saves the last copied message ID for channel-to-topics mirror."""
+    try:
+        key = _c2t_key(src_chat_id, tgt_chat_id)
+        await c2t_db.update_one(
+            {"_id": key},
+            {"$set": {
+                "last_msg_id": int(last_msg_id),
+                "src_chat_id": src_chat_id,
+                "tgt_chat_id": tgt_chat_id,
+                "updated_at": datetime.datetime.now()
+            }},
+            upsert=True
+        )
+    except Exception as e:
+        print(f"[C2T_DB] save_checkpoint error: {e}")
+
+async def reset_c2t_checkpoint(src_chat_id, tgt_chat_id):
+    """Resets the channel-to-topics checkpoint."""
+    try:
+        await c2t_db.delete_one({"_id": _c2t_key(src_chat_id, tgt_chat_id)})
     except Exception:
         pass

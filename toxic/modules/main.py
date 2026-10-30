@@ -27,6 +27,7 @@ from pyrogram.errors import FloodWait
 from datetime import datetime, timedelta
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import subprocess
+from pyrogram.enums import ParseMode
 from pyrogram.types import Message
 from toxic.modules.shrink import is_user_verified
 async def generate_random_name(length=8):
@@ -126,8 +127,14 @@ async def single_link(_, message):
         return
 
     # Check freemium limits
-    if await chk_user(message, user_id) == 1 and FREEMIUM_LIMIT == 0 and user_id not in OWNER_ID and not await is_user_verified(user_id):
-        await message.reply("Freemium service is currently not available. Upgrade to premium for access.")
+    if await chk_user(message, user_id) == 1 and FREEMIUM_LIMIT == 0 and user_id not in OWNER_ID:
+        from toxic.core.func import get_upgrade_premium_card
+        text, kb = get_upgrade_premium_card(message.from_user)
+        photo_url = "https://freeimage.host/i/n04TxVa"
+        try:
+            await message.reply_photo(photo=photo_url, caption=text, reply_markup=kb, parse_mode=ParseMode.HTML)
+        except Exception:
+            await message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
         return
 
     # Check cooldown
@@ -157,35 +164,21 @@ async def single_link(_, message):
         await msg.edit_text(f"Link: `{link}`\n\n**Error:** {str(e)}")
     finally:
         users_loop[user_id] = False
-        if userbot:
-            await userbot.stop()
+        # Userbot is globally managed by userbot_manager; keep alive
         try:
             await msg.delete()
         except Exception:
             pass
 
 
-async def initialize_userbot(user_id): # this ensure the single startup .. even if logged in or not
-    """Initialize the userbot session for the given user."""
-    data = await db.get_data(user_id)
-    if data and data.get("session"):
-        try:
-            device = 'iPhone 16 Pro' # added gareebi text
-            userbot = Client(
-                f"userbot_{user_id}",
-                api_id=API_ID,
-                api_hash=API_HASH,
-                device_model=device,
-                session_string=data.get("session"),
-                in_memory=True,
-                no_updates=True,
-                max_concurrent_transmissions=16
-            )
-            await userbot.start()
-            return userbot
-        except Exception:
-            return None
-    return None
+async def initialize_userbot(user_id):
+    """Returns the shared unified userbot session for the given user."""
+    try:
+        from toxic.core.userbot_manager import get_or_create_userbot
+        return await get_or_create_userbot(user_id)
+    except Exception as e:
+        print(f"[Main] initialize_userbot error for {user_id}: {e}")
+        return None
 
 
 async def is_normal_tg_link(link: str) -> bool:
@@ -211,7 +204,21 @@ async def batch_link(_, message):
     join = await subscribe(_, message)
     if join == 1:
         return
+    from toxic.core.func import is_free_user, get_upgrade_premium_card, chk_user
+    from config import FREEMIUM_LIMIT
+    from toxic.modules.shrink import is_user_verified
+
     user_id = message.chat.id
+    freecheck = await chk_user(message, user_id)
+    if freecheck == 1 and FREEMIUM_LIMIT == 0 and user_id not in OWNER_ID:
+        text, kb = get_upgrade_premium_card(message.from_user)
+        photo_url = "https://freeimage.host/i/n04TxVa"
+        try:
+            await message.reply_photo(photo=photo_url, caption=text, reply_markup=kb, parse_mode=ParseMode.HTML)
+        except Exception:
+            await message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
+        return
+
     # Check if a batch process is already running
     if users_loop.get(user_id, False):
         await app.send_message(
@@ -251,8 +258,10 @@ async def handle_batch_choice(_, query):
 
 async def prompt_new_batch(user_id, message):
     freecheck = await chk_user(message, user_id)
-    if freecheck == 1 and FREEMIUM_LIMIT == 0 and user_id not in OWNER_ID and not await is_user_verified(user_id):
-        await app.send_message(user_id, "Freemium service is currently not available. Upgrade to premium for access.")
+    if freecheck == 1 and FREEMIUM_LIMIT == 0 and user_id not in OWNER_ID:
+        from toxic.core.func import get_upgrade_premium_card
+        text, kb = get_upgrade_premium_card(message.from_user if hasattr(message, "from_user") else None)
+        await app.send_message(user_id, text, reply_markup=kb, parse_mode=ParseMode.HTML)
         return
 
     max_batch_size = FREEMIUM_LIMIT if freecheck == 1 else PREMIUM_LIMIT
@@ -318,8 +327,10 @@ async def prompt_new_batch(user_id, message):
 
 async def prompt_resume_batch(user_id, message):
     freecheck = await chk_user(message, user_id)
-    if freecheck == 1 and FREEMIUM_LIMIT == 0 and user_id not in OWNER_ID and not await is_user_verified(user_id):
-        await app.send_message(user_id, "Freemium service is currently not available. Upgrade to premium for access.")
+    if freecheck == 1 and FREEMIUM_LIMIT == 0 and user_id not in OWNER_ID:
+        from toxic.core.func import get_upgrade_premium_card
+        text, kb = get_upgrade_premium_card(message.from_user if hasattr(message, "from_user") else None)
+        await app.send_message(user_id, text, reply_markup=kb, parse_mode=ParseMode.HTML)
         return
 
     max_batch_size = FREEMIUM_LIMIT if freecheck == 1 else PREMIUM_LIMIT
@@ -415,9 +426,11 @@ async def execute_batch(user_id, base_url, cs, cl, is_tg_openmessage, freecheck)
             
             # Check link type
             is_special = any(x in link for x in ['t.me/b/', 't.me/c/', 'tg://openmessage', 'telegram.me/c/', 'telegram.dog/c/'])
-            if is_special and not userbot:
-                fail_count += 1
-                continue
+            if is_special and (not userbot or not getattr(userbot, "is_connected", False)):
+                userbot = await initialize_userbot(user_id)
+                if not userbot:
+                    fail_count += 1
+                    continue
             
             # Save batch progress to MongoDB before processing so they can continue from the exact failure/stop point
             save_user_data(user_id, "last_batch_url", url)
@@ -426,11 +439,9 @@ async def execute_batch(user_id, base_url, cs, cl, is_tg_openmessage, freecheck)
                 # Process the message
                 await get_msg(userbot, user_id, None, link, 0, pin_msg)
                 success_count += 1
-                # Adaptive delay to avoid flood waits
                 await asyncio.sleep(0.5) 
             except FloodWait as e:
                 await asyncio.sleep(e.value + 2)
-                # Retry once after flood wait
                 try:
                     await get_msg(userbot, user_id, None, link, 0, pin_msg)
                     success_count += 1
@@ -438,7 +449,20 @@ async def execute_batch(user_id, base_url, cs, cl, is_tg_openmessage, freecheck)
                     fail_count += 1
             except Exception as e:
                 print(f"Error at {i}: {e}")
-                fail_count += 1
+                # Auto-recovery retry for userbot disconnect or socket glitch
+                reconnected = False
+                if is_special:
+                    try:
+                        userbot = await initialize_userbot(user_id)
+                        if userbot and getattr(userbot, "is_connected", False):
+                            await asyncio.sleep(1)
+                            await get_msg(userbot, user_id, None, link, 0, pin_msg)
+                            success_count += 1
+                            reconnected = True
+                    except Exception as retry_err:
+                        print(f"Batch retry error at {i}: {retry_err}")
+                if not reconnected:
+                    fail_count += 1
             
             # Update progress
             done = success_count + fail_count
@@ -518,8 +542,7 @@ async def execute_batch(user_id, base_url, cs, cl, is_tg_openmessage, freecheck)
         await app.send_message(user_id, f"Critical Error: {e}")
     finally:
         users_loop.pop(user_id, None)
-        if userbot:
-            await userbot.stop()
+        # Userbot is globally managed by userbot_manager; keep alive
 
 @app.on_callback_query(filters.regex(r"stop_batch_(\d+)"))
 async def stop_batch_callback(_, query):

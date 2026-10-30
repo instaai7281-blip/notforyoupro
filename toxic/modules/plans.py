@@ -29,7 +29,8 @@ from toxic.core.mongo.db import (
     is_owner,
     is_admin_or_owner
 )
-from pyrogram import filters, Client
+from pyrogram import filters, Client, enums
+from pyrogram.enums import ParseMode
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 
 
@@ -52,64 +53,60 @@ async def remove_premium(client, message):
         except Exception:
             pass
 
-        # Check premium database
-        data = await plans_db.check_premium(user_id)
-        
         # Check active tokens database
         from motor.motor_asyncio import AsyncIOMotorClient
         from config import MONGO_DB
         tclient = AsyncIOMotorClient(MONGO_DB)
         tdb = tclient["telegram_bot"]
         tokens_col = tdb["tokens"]
-        token_data = await tokens_col.find_one({"user_id": user_id})
 
-        is_premium = data and data.get("_id")
+        u_variants = [user_id]
+        try:
+            u_variants.append(int(user_id))
+        except Exception:
+            pass
+        try:
+            u_variants.append(str(user_id))
+        except Exception:
+            pass
+
+        data = await plans_db.check_premium(user_id)
+        mirror_data = await plans_db.check_mirror_premium(user_id)
+        token_data = await tokens_col.find_one({"user_id": {"$in": u_variants}})
+
+        is_premium = bool(data or mirror_data)
         is_token_verified = token_data is not None
 
-        if is_premium or is_token_verified:
-            if is_premium:
-                await plans_db.remove_premium(user_id)
-            if is_token_verified:
-                await tokens_col.delete_one({"user_id": user_id})
+        # Execute thorough removal across all subscription tables
+        await plans_db.remove_premium(user_id)
+        await plans_db.remove_mirror_premium(user_id)
+        await tokens_col.delete_many({"user_id": {"$in": u_variants}})
+        plans_db.invalidate_plans_cache()
 
-            await message.reply_text(
-                f"⚙️ ⚡ **XTRACTOR BOT PRO** ⚡ ⚙️\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🗑️ **PREMIUM ACCESS REVOKED**\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 **User:** {user_mention}\n"
-                f"🆔 **ID:** `{user_id}`\n"
-                f"❌ **Status:** Premium access & active token sessions terminated.\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            )
-            try:
-                await client.send_message(
-                    chat_id=user_id,
-                    text=(
-                        f"⚠️ **NOTICE: PREMIUM EXPIRED/TERMINATED** ⚠️\n"
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"Hello, your premium subscription or token session for \n"
-                        f"⚡ **Xtractor Bot Pro** ⚡ has been terminated or expired.\n\n"
-                        f"💬 If you think this is a mistake or wish to renew, please contact @CrazyxDeveloper_Bot.\n"
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    )
+        await message.reply_text(
+            f"⚙️ ⚡ **XTRACTOR BOT PRO** ⚡ ⚙️\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🗑️ **PREMIUM & MIRROR ACCESS REVOKED**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 **User:** {user_mention}\n"
+            f"🆔 **ID:** `{user_id}`\n"
+            f"❌ **Status:** Premium, Topic Mirror, & active token sessions terminated.\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        )
+        try:
+            await client.send_message(
+                chat_id=user_id,
+                text=(
+                    f"⚠️ **NOTICE: ACCESS TERMINATED** ⚠️\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"Hello, your subscription for \n"
+                    f"⚡ **Xtractor Bot Pro** ⚡ has been removed or expired.\n\n"
+                    f"💬 If you wish to purchase/renew, please contact @CrazyxDeveloper_Bot.\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 )
-            except Exception:
-                pass
-        else:
-            # Force cleanup of any records in both databases just in case
-            await plans_db.remove_premium(user_id)
-            await tokens_col.delete_one({"user_id": user_id})
-            await message.reply_text(
-                f"⚙️ ⚡ **XTRACTOR BOT PRO** ⚡ ⚙️\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🧹 **FORCE CLEANED**\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 **User:** {user_mention}\n"
-                f"🆔 **ID:** `{user_id}`\n"
-                f"🧹 **Action:** Force-removed from premium and token databases.\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             )
+        except Exception:
+            pass
     else:
         await message.reply_text(
             f"💤 **Boring...**\n\n"
@@ -493,12 +490,23 @@ async def list_admins_cmd_handler(client, message):
 
 
 # ─── Admin Help & Control Panel Command (Guarded: Owner/Admin Only) ───
-@app.on_message(filters.command(["admin", "adminhelp", "panel", "owner"]) & admin_filter)
+@app.on_message(filters.command(["admin", "adminhelp", "panel", "owner"]))
 async def admin_panel_cmd_handler(client, message):
     """
     Admin control panel command that displays all secret & admin commands.
     Restricted to Owner and Promoted Admins.
     """
+    user = getattr(message, "from_user", None) or getattr(message, "sender_chat", None)
+    user_id = user.id if user else 0
+    if not is_admin_or_owner(user_id):
+        await message.reply_text(
+            f"🔒 <b>Access Denied:</b> Admin Control Panel is restricted to Bot Owners and Admins.\n\n"
+            f"👤 <b>Your ID:</b> <code>{user_id}</code>\n"
+            f"<i>If you are the bot owner, make sure your ID is set in <code>OWNER_ID</code>.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
     admin_text = (
         f"<blockquote>👑 <b>XTRACTOR PRO — ADMIN CONTROL PANEL</b> 👑</blockquote>\n\n"
         f"👋 <b>Welcome Admin / Owner!</b>\n"
@@ -507,6 +515,10 @@ async def admin_panel_cmd_handler(client, message):
         f"• <code>/addadmin &lt;user_id&gt;</code> — Promote user to Bot Admin\n"
         f"• <code>/remadmin &lt;user_id&gt;</code> — Demote / revoke Bot Admin\n"
         f"• <code>/admins</code> — List all active bot owners & admins</blockquote>\n\n"
+        f"<blockquote>🎁 <b>GLOBAL FREE ACCESS (FREE TRIAL FOR ALL USERS)</b>\n"
+        f"• <code>/freeaccess</code> — Interactive dashboard to toggle Free Mirror & Batch for all bot users\n"
+        f"• <code>/freeaccess on 1 day</code> — Give 1 Day Free Mirror & Batch to everyone\n"
+        f"• <code>/freeaccess off</code> — Turn OFF all free access immediately</blockquote>\n\n"
         f"<blockquote>🎁 <b>1-HOUR TRIAL DEMO (HIDDEN)</b>\n"
         f"• <code>/mirrordemo &lt;user_id&gt;</code> — Give 1-hour Topic Mirror trial demo (auto-expires in 60m)\n"
         f"• <i>Aliases:</i> <code>/demomirror</code>, <code>/adddemo</code></blockquote>\n\n"
@@ -523,7 +535,17 @@ async def admin_panel_cmd_handler(client, message):
         f"• <code>/check &lt;user_id&gt;</code> — Check standard premium status\n"
         f"• <code>/transfer &lt;to_user_id&gt;</code> — Transfer premium subscription\n"
         f"• <code>/stats</code> — Bot statistics & server specs\n"
+        f"• <code>/community</code> — Total combined members across all channels & groups\n"
         f"• <code>/getusers</code> — Interactive premium user manager</blockquote>\n\n"
+        f"<blockquote>🛡️ <b>BIO VERIFICATION & JOIN REQUESTS</b>\n"
+        f"• <code>/biocheck</code> — Toggle Bio Verification ON/OFF & live stats\n"
+        f"• <code>/setbiotag &lt;tag&gt;</code> — Change required bio tag (e.g. @Crazy_for_Goals)\n"
+        f"• <code>/acceptall</code> — Accept ALL pending join requests in target channel/group\n"
+        f"• <code>/acceptall &lt;chat_id&gt;</code> — Accept all pending requests for a specific channel</blockquote>\n\n"
+        f"<blockquote>🧹 <b>CLEANUP & PURGE</b>\n"
+        f"• <code>/deleteall</code> — Mass delete all messages in a group/channel (Anonymous Admin supported)\n"
+        f"• <code>/ban &lt;user_id&gt;</code> — Ban user from bot\n"
+        f"• <code>/unban &lt;user_id&gt;</code> — Unban user</blockquote>\n\n"
         f"<blockquote>📢 <b>BROADCAST & CONFIGURATION</b>\n"
         f"• <code>/gcast &lt;msg/reply&gt;</code> — Broadcast to all users & groups\n"
         f"• <code>/autobroadcast</code> — Smart Auto-Broadcast setup\n"
@@ -1249,4 +1271,453 @@ async def check_toxic_cmd(client, message):
     else:
         msg += "<i>No extra keys in MongoDB database. (Only Master Key active)</i>"
     await message.reply_text(msg, parse_mode=ParseMode.HTML)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ────── Global Free Access Management (Mirror & Batch Free Trial) ───────────
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def build_free_access_panel() -> tuple:
+    from toxic.core.mongo.plans_db import (
+        get_global_free_access,
+        format_time_remaining
+    )
+    import datetime
+    data = await get_global_free_access()
+    now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+    # Mirror status
+    mirror_on = data.get("mirror_free", False)
+    mirror_exp = data.get("mirror_expires_at")
+    mirror_rem_sec = None
+    if mirror_on and mirror_exp:
+        mirror_rem_sec = max(0, int((mirror_exp - now_utc).total_seconds()))
+        if mirror_rem_sec == 0:
+            mirror_on = False
+
+    # Batch status
+    batch_on = data.get("batch_free", False)
+    batch_exp = data.get("batch_expires_at")
+    batch_rem_sec = None
+    if batch_on and batch_exp:
+        batch_rem_sec = max(0, int((batch_exp - now_utc).total_seconds()))
+        if batch_rem_sec == 0:
+            batch_on = False
+
+    mirror_badge = "🟢 <b>ACTIVE (FREE)</b>" if mirror_on else "🔴 <b>DISABLED (PAID ONLY)</b>"
+    batch_badge = "🟢 <b>ACTIVE (FREE)</b>" if batch_on else "🔴 <b>DISABLED (PAID ONLY)</b>"
+
+    mirror_time_str = format_time_remaining(mirror_rem_sec) if (mirror_on and mirror_exp) else ("Permanent (Until OFF)" if mirror_on else "N/A")
+    batch_time_str = format_time_remaining(batch_rem_sec) if (batch_on and batch_exp) else ("Permanent (Until OFF)" if batch_on else "N/A")
+
+    text = (
+        "<blockquote>👑 <b>GLOBAL FREE ACCESS CONTROL PANEL</b> 👑</blockquote>\n\n"
+        "⚡ <b>Control Free Access for ALL Bot Users Worldwide</b>\n"
+        "<i>Jab yeh active hoga, sabhi users bina kisi plan ke Topic Mirror aur Batch use kar payenge!</i>\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📁 <b>Topic Mirror Free Access:</b> {mirror_badge}\n"
+        f"⏳ <b>Mirror Remaining:</b> <code>{mirror_time_str}</code>\n"
+        f"📅 <b>Mirror Expiry:</b> <code>{mirror_exp.strftime('%Y-%m-%d %H:%M UTC') if (mirror_on and mirror_exp) else 'None'}</code>\n\n"
+        f"📦 <b>Batch / Extract Free Access:</b> {batch_badge}\n"
+        f"⏳ <b>Batch Remaining:</b> <code>{batch_time_str}</code>\n"
+        f"📅 <b>Batch Expiry:</b> <code>{batch_exp.strftime('%Y-%m-%d %H:%M UTC') if (batch_on and batch_exp) else 'None'}</code>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "👇 <b>Control Buttons se ON/OFF aur Duration set karein:</b>"
+    )
+
+    mirror_btn_text = "📁 Mirror: [🔴 Turn OFF]" if mirror_on else "📁 Mirror: [🟢 Turn ON (1 Day)]"
+    batch_btn_text = "📦 Batch: [🔴 Turn OFF]" if batch_on else "📦 Batch: [🟢 Turn ON (1 Day)]"
+
+    buttons = [
+        [
+            InlineKeyboardButton(mirror_btn_text, callback_data="fa_toggle_mirror"),
+            InlineKeyboardButton(batch_btn_text, callback_data="fa_toggle_batch"),
+        ],
+        [
+            InlineKeyboardButton("🎁 1-Click FREE BOTH (1 Day / 24h) 🚀", callback_data="fa_both_1d")
+        ],
+        [
+            InlineKeyboardButton("⏱️ 1 Hour", callback_data="fa_dur_3600"),
+            InlineKeyboardButton("⏱️ 3 Hours", callback_data="fa_dur_10800"),
+            InlineKeyboardButton("⏱️ 6 Hours", callback_data="fa_dur_21600"),
+        ],
+        [
+            InlineKeyboardButton("⏱️ 12 Hours", callback_data="fa_dur_43200"),
+            InlineKeyboardButton("⏱️ 1 Day (24h)", callback_data="fa_dur_86400"),
+            InlineKeyboardButton("⏱️ 2 Days", callback_data="fa_dur_172800"),
+        ],
+        [
+            InlineKeyboardButton("⏱️ 3 Days", callback_data="fa_dur_259200"),
+            InlineKeyboardButton("⏱️ 7 Days", callback_data="fa_dur_604800"),
+            InlineKeyboardButton("♾️ Permanent", callback_data="fa_dur_inf"),
+        ],
+        [
+            InlineKeyboardButton("🛑 Turn OFF ALL Free Access", callback_data="fa_off_all")
+        ],
+        [
+            InlineKeyboardButton("📢 Announce Promo to All", callback_data="fa_announce"),
+            InlineKeyboardButton("🔄 Refresh Status", callback_data="fa_refresh")
+        ]
+    ]
+
+    return text, InlineKeyboardMarkup(buttons)
+
+
+@app.on_message(filters.command([
+    "freeaccess", "free_access", "freemirror", "free_mirror",
+    "freebatch", "free_batch", "free", "globalfree", "freetrial",
+    "freeplan", "freemode", "freeaccessmode"
+]))
+async def free_access_cmd_handler(client, message):
+    from toxic.core.mongo.plans_db import (
+        set_global_free_access,
+        parse_duration_to_seconds,
+        format_time_remaining
+    )
+    user = getattr(message, "from_user", None) or getattr(message, "sender_chat", None)
+    user_id = user.id if user else 0
+    if not is_admin_or_owner(user_id):
+        await message.reply_text(
+            f"🔒 <b>Access Denied:</b> This command is restricted to Bot Owners and Admins.\n\n"
+            f"👤 <b>Your Telegram ID:</b> <code>{user_id}</code>\n"
+            f"<i>If you are the bot owner, make sure your ID is added to <code>OWNER_ID</code> in bot configuration or promote via <code>/addadmin</code>.</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    cmd_parts = message.command
+    if len(cmd_parts) == 1:
+        text, kb = await build_free_access_panel()
+        await message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+
+    arg1 = cmd_parts[1].lower()
+
+    if arg1 in ("off", "disable", "stop", "close"):
+        target = "both"
+        if len(cmd_parts) >= 3 and cmd_parts[2].lower() in ("mirror", "batch"):
+            target = cmd_parts[2].lower()
+        await set_global_free_access(feature=target, enabled=False, admin_id=message.from_user.id)
+        await message.reply_text(
+            f"🛑 <b>Global Free Access for <code>{target.upper()}</code> has been TURNED OFF!</b>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    if arg1 in ("status", "check", "info"):
+        text, kb = await build_free_access_panel()
+        await message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+
+    target = "both"
+    duration_str = "1 day"
+
+    if arg1 == "on":
+        if len(cmd_parts) >= 3 and cmd_parts[2].lower() in ("mirror", "batch", "both", "all"):
+            target = cmd_parts[2].lower()
+            if len(cmd_parts) >= 4:
+                duration_str = " ".join(cmd_parts[3:])
+        elif len(cmd_parts) >= 3:
+            duration_str = " ".join(cmd_parts[2:])
+    elif arg1 in ("mirror", "batch"):
+        target = arg1
+        if len(cmd_parts) >= 3:
+            duration_str = " ".join(cmd_parts[2:])
+    else:
+        duration_str = " ".join(cmd_parts[1:])
+
+    seconds = parse_duration_to_seconds(duration_str)
+    await set_global_free_access(feature=target, enabled=True, duration_seconds=seconds, admin_id=message.from_user.id)
+    time_str = format_time_remaining(seconds)
+    await message.reply_text(
+        f"🎉 <b>Global Free Access ENABLED!</b> 🚀\n\n"
+        f"• <b>Feature:</b> <code>{target.upper()}</code>\n"
+        f"• <b>Duration:</b> <code>{time_str}</code> ({seconds}s)\n\n"
+        f"✅ <i>All users can now use {target.title()} completely FREE!</i>",
+        parse_mode=ParseMode.HTML
+    )
+
+
+async def _send_promo_broadcast(client, users, text, kb):
+    sent = 0
+    for u in users:
+        try:
+            uid = u.get("user") if isinstance(u, dict) else u
+            if uid:
+                await client.send_message(chat_id=int(uid), text=text, parse_mode=ParseMode.HTML, reply_markup=kb)
+                sent += 1
+                await asyncio.sleep(0.05)
+        except Exception:
+            pass
+    print(f"[PromoBroadcast] Announcement sent to {sent} users.")
+
+
+@app.on_callback_query(filters.regex(r"^fa_"))
+async def free_access_callback_handler(client, query: CallbackQuery):
+    from toxic.core.mongo.plans_db import (
+        get_global_free_access,
+        set_global_free_access,
+        format_time_remaining
+    )
+    user_id = query.from_user.id if query.from_user else 0
+    if not is_admin_or_owner(user_id):
+        await query.answer("🔒 Access Denied: Only Bot Owners & Admins can change Free Access settings.", show_alert=True)
+        return
+    action = query.data
+
+    if action == "fa_refresh":
+        text, kb = await build_free_access_panel()
+        try:
+            await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        except Exception:
+            pass
+        await query.answer("🔄 Status Refreshed!", show_alert=False)
+        return
+
+    if action == "fa_toggle_mirror":
+        data = await get_global_free_access()
+        cur = data.get("mirror_free", False)
+        await set_global_free_access("mirror", enabled=not cur, duration_seconds=86400 if not cur else None, admin_id=query.from_user.id)
+        text, kb = await build_free_access_panel()
+        try:
+            await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        except Exception:
+            pass
+        await query.answer(f"📁 Mirror Free: {'OFF' if cur else 'ON (1 Day)'}", show_alert=True)
+        return
+
+    if action == "fa_toggle_batch":
+        data = await get_global_free_access()
+        cur = data.get("batch_free", False)
+        await set_global_free_access("batch", enabled=not cur, duration_seconds=86400 if not cur else None, admin_id=query.from_user.id)
+        text, kb = await build_free_access_panel()
+        try:
+            await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        except Exception:
+            pass
+        await query.answer(f"📦 Batch Free: {'OFF' if cur else 'ON (1 Day)'}", show_alert=True)
+        return
+
+    if action == "fa_both_1d":
+        await set_global_free_access("both", enabled=True, duration_seconds=86400, admin_id=query.from_user.id)
+        text, kb = await build_free_access_panel()
+        try:
+            await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        except Exception:
+            pass
+        await query.answer("🎁 Free Access ENABLED for BOTH (1 Day)!", show_alert=True)
+        return
+
+    if action.startswith("fa_dur_"):
+        dur_val = action.split("_")[2]
+        if dur_val == "inf":
+            await set_global_free_access("both", enabled=True, duration_seconds=None, admin_id=query.from_user.id)
+            ans = "♾️ Permanent Free Access Enabled (No Limit)!"
+        else:
+            sec = int(dur_val)
+            await set_global_free_access("both", enabled=True, duration_seconds=sec, admin_id=query.from_user.id)
+            ans = f"⏱️ Duration set to {format_time_remaining(sec)} for Both!"
+        text, kb = await build_free_access_panel()
+        try:
+            await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        except Exception:
+            pass
+        await query.answer(ans, show_alert=True)
+        return
+
+    if action == "fa_off_all":
+        await set_global_free_access("both", enabled=False, admin_id=query.from_user.id)
+        text, kb = await build_free_access_panel()
+        try:
+            await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        except Exception:
+            pass
+        await query.answer("🛑 ALL Free Access Disabled!", show_alert=True)
+        return
+
+    if action == "fa_announce":
+        from toxic.core.mongo.users_db import get_users
+        users = await get_users()
+        promo_msg = (
+            "🎉 <b>SPECIAL PROMOTION: FREE ACCESS UNLOCKED!</b> 🚀\n\n"
+            "<blockquote>🎁 <b>Topic Mirroring & Bulk Batch are now 100% FREE!</b>\n\n"
+            "All users have been granted complimentary access. You can now clone full topic groups and batch process files without any plan restrictions!</blockquote>\n\n"
+            "<b>🚀 Quick Start:</b>\n"
+            "• <code>/topicmirror</code> — Clone entire supergroups with topics\n"
+            "• <code>/batch</code> — Bulk extract and upload restricted files\n\n"
+            "<i>Enjoy your free access! 🖤</i>"
+        )
+        promo_kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📁 Start Topic Mirror", callback_data="tm_new")],
+            [InlineKeyboardButton("📘 User Guide", callback_data="guide_page_1")]
+        ])
+        asyncio.create_task(_send_promo_broadcast(client, users, promo_msg, promo_kb))
+        await query.answer(f"📢 Announcing promo to {len(users)} users in background!", show_alert=True)
+        return
     
+
+
+# ─────────────────────────────────────────────────────────────
+# 💎 PREMIUM CENTER (EXACT STYLING AS REQUESTED BY LO)
+# ─────────────────────────────────────────────────────────────
+
+def get_premium_center_markup():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Save restrict Bot", callback_data="prem_saver_bot"),
+            InlineKeyboardButton("Topic Mirror Bot", callback_data="prem_mirror_bot")
+        ],
+        [
+            InlineKeyboardButton("❓ Help", callback_data="prem_help_steps")
+        ]
+    ])
+
+def format_stylized_name(name: str) -> str:
+    """Format user name with stylish unicode glyphs matching LO's screenshot"""
+    if not name:
+        return "Tⱺxic"
+    # subtle aesthetic touch: replace standard 'o' with 'ⱺ'
+    styled = name.replace("o", "ⱺ").replace("O", "ⱺ")
+    return f"{styled} ✯"
+
+@app.on_message(filters.command(["premium", "premiumcenter", "store", "buy"]))
+async def premium_center_cmd(client: Client, message):
+    user = message.from_user
+    raw_name = user.first_name if user and user.first_name else "Tⱺxic"
+    styled_name = format_stylized_name(raw_name)
+
+    text = (
+        "💎 <b>PREMIUM CENTER</b>\n\n"
+        f"👋 <b>WELCOME,</b> 🖤 <b>{styled_name}</b>\n\n"
+        "⚡ <b>PURCHASE PREMIUM FOR ANY SUPPORTED BOT.</b>\n\n"
+        "💎 <b>AUTOMATIC ACTIVATION • 🚫 NO SCREENSHOT</b>\n\n"
+        "❓ <b>TAP HELP FOR PAYMENT STEPS.</b>"
+    )
+
+    await message.reply_text(
+        text=text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_premium_center_markup(),
+        disable_web_page_preview=True
+    )
+
+
+@app.on_callback_query(filters.regex(r"^prem_main_menu$"))
+async def prem_main_menu_cb(client: Client, query: CallbackQuery):
+    user = query.from_user
+    raw_name = user.first_name if user and user.first_name else "Tⱺxic"
+    styled_name = format_stylized_name(raw_name)
+
+    text = (
+        "💎 <b>PREMIUM CENTER</b>\n\n"
+        f"👋 <b>WELCOME,</b> 🖤 <b>{styled_name}</b>\n\n"
+        "⚡ <b>PURCHASE PREMIUM FOR ANY SUPPORTED BOT.</b>\n\n"
+        "💎 <b>AUTOMATIC ACTIVATION • 🚫 NO SCREENSHOT</b>\n\n"
+        "❓ <b>TAP HELP FOR PAYMENT STEPS.</b>"
+    )
+    try:
+        await query.message.edit_text(
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_premium_center_markup(),
+            disable_web_page_preview=True
+        )
+    except Exception:
+        await query.message.reply_text(
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_premium_center_markup(),
+            disable_web_page_preview=True
+        )
+    await query.answer()
+
+
+@app.on_callback_query(filters.regex(r"^prem_saver_bot$"))
+async def prem_saver_bot_cb(client: Client, query: CallbackQuery):
+    text = (
+        "📥 <b>SAVE RESTRICT CONTENT (SRC) BOT PLAN</b>\n\n"
+        "<blockquote>⚡ <b>FEATURES INCLUDED:</b>\n"
+        "• Download & Forward Restricted Private Channel Media\n"
+        "• Server-Side Zero Bandwidth Copy Mode (Ultra-Fast 50ms)\n"
+        "• Bulk Batch Processing (Up to 5,000 files in 1 command)\n"
+        "• Custom Thumbnails, PDF Watermarks & Clean Captions\n"
+        "• Bypass Telegram Copy Protection & Forward Lock</blockquote>\n\n"
+        "<b>💰 PRICING:</b>\n"
+        "• <b>1 Month:</b> <code>₹149</code> / <code>$2.00 USD</code>\n"
+        "• <b>3 Months:</b> <code>₹299</code> / <code>$4.00 USD</code>\n\n"
+        "<i>Instant automatic activation upon payment confirmation! 🚀</i>"
+    )
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("💳 Buy 1 Month (₹149)", url="https://t.me/CrazyxDeveloper_Bot"),
+            InlineKeyboardButton("💎 Buy 3 Months (₹299)", url="https://t.me/CrazyxDeveloper_Bot")
+        ],
+        [
+            InlineKeyboardButton("🔙 Back to Premium Center", callback_data="prem_main_menu")
+        ]
+    ])
+    try:
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb, disable_web_page_preview=True)
+    except Exception:
+        await query.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb, disable_web_page_preview=True)
+    await query.answer()
+
+
+@app.on_callback_query(filters.regex(r"^prem_mirror_bot$"))
+async def prem_mirror_bot_cb(client: Client, query: CallbackQuery):
+    text = (
+        "👑 <b>TOPIC MIRROR & FORUM CLONE PRO PLAN</b>\n\n"
+        "<blockquote>🌟 <b>EXCLUSIVE VIP CAPABILITIES:</b>\n"
+        "• 1-Click Complete Supergroup Forum Clone (All Topics & Icons)\n"
+        "• Channel-to-Topics (<code>/c2t</code>) Auto Caption Route Engine\n"
+        "• 1-Click Live Scan & Sync Missing Content (<code>/sync_mirror</code>)\n"
+        "• Daily Scheduled Auto-Update & Real-Time Sync\n"
+        "• Includes FULL Save Restrict (SRC) Plan automatically!</blockquote>\n\n"
+        "<b>💰 PRICING:</b>\n"
+        "• <b>1 Month:</b> <code>₹299</code> / <code>$4.00 USD</code>\n"
+        "• <b>3 Months:</b> <code>₹599</code> / <code>$8.00 USD</code>\n\n"
+        "<i>Unlock unlimited supergroup cloning at maximum server speed! ⚡</i>"
+    )
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("👑 Buy 1 Month (₹299)", url="https://t.me/CrazyxDeveloper_Bot"),
+            InlineKeyboardButton("🌟 Buy 3 Months (₹599)", url="https://t.me/CrazyxDeveloper_Bot")
+        ],
+        [
+            InlineKeyboardButton("🔙 Back to Premium Center", callback_data="prem_main_menu")
+        ]
+    ])
+    try:
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb, disable_web_page_preview=True)
+    except Exception:
+        await query.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb, disable_web_page_preview=True)
+    await query.answer()
+
+
+@app.on_callback_query(filters.regex(r"^prem_help_steps$"))
+async def prem_help_steps_cb(client: Client, query: CallbackQuery):
+    text = (
+        "❓ <b>PAYMENT & ACTIVATION STEPS</b>\n\n"
+        "<blockquote><b>1️⃣ CHOOSE YOUR BOT & DURATION:</b>\n"
+        "Select either Save Restrict Bot or Topic Mirror Bot above.\n\n"
+        "<b>2️⃣ PAYMENT METHODS SUPPORTED:</b>\n"
+        "• 🇮🇳 <b>UPI:</b> PhonePe / GooglePay / Paytm / QR\n"
+        "• 🌐 <b>Crypto:</b> USDT (BEP20 / TRC20 / TON)\n"
+        "• 🎁 <b>Amazon / Flipkart Gift Cards</b>\n\n"
+        "<b>3️⃣ INSTANT ACTIVATION:</b>\n"
+        "Send your User ID (<code>/id</code>) to our Admin bot. Your premium access unlocks automatically in under 2 minutes!</blockquote>\n\n"
+        "👉 <b>Admin Support:</b> @CrazyxDeveloper_Bot"
+    )
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("💬 Chat with Admin", url="https://t.me/CrazyxDeveloper_Bot")
+        ],
+        [
+            InlineKeyboardButton("🔙 Back to Premium Center", callback_data="prem_main_menu")
+        ]
+    ])
+    try:
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb, disable_web_page_preview=True)
+    except Exception:
+        await query.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb, disable_web_page_preview=True)
+    await query.answer()

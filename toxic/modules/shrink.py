@@ -80,6 +80,10 @@ async def is_user_verified(user_id):
 @app.on_message(filters.command("start"))
 async def token_handler(client, message):
     """Handle the /start command."""
+    user_id = message.from_user.id if message.from_user else message.chat.id
+    from toxic.core.func import is_free_user
+    if await is_free_user(user_id):
+        return
     
     main_channel_url = await get_main_channel_link()
     
@@ -118,15 +122,24 @@ async def token_handler(client, message):
 
     if len(message.command) <= 1:
         image_url = "https://freeimage.host/i/n04TxVa"
+        try:
+            bot_me = await app.get_me()
+            bot_clean_un = (bot_me.username or "").lstrip("@")
+        except Exception:
+            bot_clean_un = "Crazy_For_Youuu_bot"
+
+        add_group_btn = InlineKeyboardButton("➕ Add Me to Your Group 🚀", url=f"https://t.me/{bot_clean_un}?startgroup=true&admin=post_messages+manage_topics+delete_messages")
         join_button = InlineKeyboardButton("✈️ Main Channel", url=main_channel_url)
         developer_button = InlineKeyboardButton("⚡ 𝘾𝙧𝙖𝙯𝙮 𝘿𝙚𝙫𝙚𝙡𝙤𝙥𝙚𝙧 </>", url="https://t.me/CrazyxDeveloper_Bot")
         keyboard = InlineKeyboardMarkup([
+            [add_group_btn],
             [join_button],
             [developer_button]
         ])
 
         # Mention the user in the caption
         user_mention = message.from_user.mention if message.from_user else "User"
+
 
         await message.reply_photo(
             image_url,            

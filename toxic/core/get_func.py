@@ -150,12 +150,21 @@ def clean_text_advanced(text, user_tag, delete_words=None, replacements=None):
     if user_tag:
         text = re.sub(r'@\w+', user_tag, text)
     
+    # Clean WhatsApp links and channels
+    text = re.sub(r'(?im)^[^\n]*(?:whatsapp|wa\.me)[^\n]*$', '', text)
+    text = re.sub(r'(?i)https?://(?:www\.)?(?:chat\.)?whatsapp\.com/[^\s]+', '', text)
+    text = re.sub(r'(?i)(?:www\.)?(?:chat\.)?whatsapp\.com/[^\s]+', '', text)
+    text = re.sub(r'(?i)https?://wa\.me/[^\s]+', '', text)
+    text = re.sub(r'(?i)wa\.me/[^\s]+', '', text)
+    text = re.sub(r'(?i)https?://api\.whatsapp\.com/[^\s]+', '', text)
+    text = re.sub(r'(?i)[ \t\-_—>➤➢•*|~:👇👉]*whatsapp[\s\-_]*(?:link|channel|group|community)?[\s_:➤>–\-👇👉]*', '', text)
+
     # Stylize brackets
     text = re.sub(r'[({[]', '〘', text)
     text = re.sub(r'[)}\]]', '〙', text)
     
-    # Rebrand extraction markers
-    text = re.sub(r'(?i)(Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*', '', text)
+    # Rebrand extraction markers (with any leading emojis or spaces)
+    text = re.sub(r'(?im)^[^\n]*(?:Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*', '', text)
     
     if delete_words:
         for word in delete_words:
@@ -201,6 +210,9 @@ def clean_filename(text, user_tag=""):
     text = re.sub(r'[({[]', '〘', text)
     text = re.sub(r'[)}\]]', '〙', text)
     
+    # Sanitize Windows illegal characters: \ / : * ? " < > |
+    text = re.sub(r'[\\/:*?"<>|]+', ' ', text)
+
     # Separate base and ext
     base_name, ext = os.path.splitext(text)
     
@@ -213,8 +225,10 @@ def clean_filename(text, user_tag=""):
     else:
         base_name = re.sub(r'[\s⚝⛥\*]+$', '', base_name).strip()
         
-    # Clean extra dashes, underscores, spaces
+    # Clean extra dashes, underscores, spaces and sanitize Windows illegal characters
+    base_name = re.sub(r'[\\/:*?"<>|]+', ' ', base_name)
     base_name = re.sub(r'[ \t\-_]+', ' ', base_name).strip()
+    base_name = re.sub(r'[\s\.]+$', '', base_name).strip()
     
     if ext:
         return f"{base_name} ⚝{ext}".strip()
@@ -244,6 +258,15 @@ def clean_text_message(text, sender=None):
     # Remove HTML tags
     text = re.sub(r'<[^>]+>', '', text)
     
+    # Clean WhatsApp links and channels
+    text = re.sub(r'(?im)^[^\n]*(?:whatsapp|wa\.me)[^\n]*$', '', text)
+    text = re.sub(r'(?i)https?://(?:www\.)?(?:chat\.)?whatsapp\.com/[^\s]+', '', text)
+    text = re.sub(r'(?i)(?:www\.)?(?:chat\.)?whatsapp\.com/[^\s]+', '', text)
+    text = re.sub(r'(?i)https?://wa\.me/[^\s]+', '', text)
+    text = re.sub(r'(?i)wa\.me/[^\s]+', '', text)
+    text = re.sub(r'(?i)https?://api\.whatsapp\.com/[^\s]+', '', text)
+    text = re.sub(r'(?i)[ \t\-_—>➤➢•*|~:👇👉]*whatsapp[\s\-_]*(?:link|channel|group|community)?[\s_:➤>–\-👇👉]*', '', text)
+
     # Remove ALL URLs except YouTube
     text = strip_links_except_youtube(text)
     
@@ -261,7 +284,7 @@ def clean_text_message(text, sender=None):
         r"(?i)[*_]*let'?s\s*help[*_]*",
         r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?',
         r'(?i)toxic',
-        r'(?i)(Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*',
+        r'(?im)^[^\n]*(?:Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*',
         r'(?i)powered\s*by[^\n]*',
         r'(?i)via\s*@\w+',
         r'(?i)bot:\s*@\w+',
@@ -588,45 +611,120 @@ async def upload_media(sender, target_chat_id, file, caption, edit, topic_id, th
         if upload_method == "Pyrogram":
             has_spoiler = get_user_spoiler_preference(sender)
             caption_html = format_caption_to_html(caption)
+            curr_thumb = thumb_path if (thumb_path and os.path.isfile(thumb_path) and os.path.getsize(thumb_path) > 0) else None
+            curr_caption = caption_html
+            curr_parse_mode = ParseMode.HTML if curr_caption else None
+
+            dm = None
             if ext in video_formats:
-                # Send to user
-                dm = await app.send_video(
-                    chat_id=target_chat_id,
-                    video=file,
-                    caption=caption_html,
-                    height=height,
-                    width=width,
-                    duration=duration,
-                    thumb=thumb_path,
-                    reply_to_message_id=topic_id,
-                    parse_mode=ParseMode.HTML,
-                    progress=progress_bar,
-                    progress_args=("╔══━⚡️Uploading...⚡️━══╗\n", edit, time.time()),
-                    has_spoiler=has_spoiler
-                )
+                for v_attempt in range(1, 3):
+                    try:
+                        dm = await app.send_video(
+                            chat_id=target_chat_id,
+                            video=file,
+                            caption=curr_caption,
+                            height=height if height > 0 else None,
+                            width=width if width > 0 else None,
+                            duration=duration if duration > 0 else None,
+                            thumb=curr_thumb,
+                            reply_to_message_id=topic_id,
+                            parse_mode=curr_parse_mode,
+                            progress=progress_bar,
+                            progress_args=("╔══━⚡️Uploading...⚡️━══╗\n", edit, time.time()),
+                            has_spoiler=has_spoiler
+                        )
+                        break
+                    except FloodWait as fw:
+                        await asyncio.sleep(fw.value + 1)
+                    except Exception as ve:
+                        err_str = str(ve).upper()
+                        print(f"[UploadMedia] send_video attempt {v_attempt} notice: {ve}")
+                        if curr_thumb and any(k in err_str for k in ("THUMB", "PHOTO", "DIMENSION", "INVALID", "MEDIA", "IMAGE")):
+                            curr_thumb = None
+                            continue
+                        if curr_parse_mode and any(k in err_str for k in ("ENTITY", "BOUNDS", "PARSE", "TAG", "MESSAGE_TOO_LONG")):
+                            curr_parse_mode = None
+                            curr_caption = clean_surrogates(curr_caption)[:1000] if curr_caption else None
+                            continue
+                        break
+
+                if not dm:
+                    # Video fallback to document for 100% guaranteed delivery
+                    print("[UploadMedia] send_video fallback to send_document...")
+                    try:
+                        dm = await app.send_document(
+                            chat_id=target_chat_id,
+                            document=file,
+                            caption=curr_caption,
+                            thumb=curr_thumb,
+                            reply_to_message_id=topic_id,
+                            parse_mode=curr_parse_mode,
+                            progress=progress_bar,
+                            progress_args=("╔══━⚡️Uploading...⚡️━══╗\n", edit, time.time())
+                        )
+                    except Exception:
+                        dm = await app.send_document(
+                            chat_id=target_chat_id,
+                            document=file,
+                            caption=None,
+                            thumb=None,
+                            reply_to_message_id=topic_id
+                        )
 
             elif ext in image_formats:
-                dm = await app.send_photo(
-                    chat_id=target_chat_id,
-                    photo=file,
-                    caption=None,
-                    progress=progress_bar,
-                    reply_to_message_id=topic_id,
-                    progress_args=("╔══━⚡️Uploading...⚡️━══╗\n", edit, time.time()),
-                    has_spoiler=has_spoiler
-                )
+                try:
+                    dm = await app.send_photo(
+                        chat_id=target_chat_id,
+                        photo=file,
+                        caption=None,
+                        progress=progress_bar,
+                        reply_to_message_id=topic_id,
+                        progress_args=("╔══━⚡️Uploading...⚡️━══╗\n", edit, time.time()),
+                        has_spoiler=has_spoiler
+                    )
+                except Exception:
+                    dm = await app.send_document(
+                        chat_id=target_chat_id,
+                        document=file,
+                        caption=None,
+                        reply_to_message_id=topic_id
+                    )
 
             else:
-                dm = await app.send_document(
-                    chat_id=target_chat_id,
-                    document=file,
-                    caption=caption_html,
-                    thumb=thumb_path,
-                    reply_to_message_id=topic_id,
-                    parse_mode=ParseMode.HTML,
-                    progress=progress_bar,
-                    progress_args=("╔══━⚡️Uploading...⚡️━══╗\n", edit, time.time())
-                )
+                for d_attempt in range(1, 3):
+                    try:
+                        dm = await app.send_document(
+                            chat_id=target_chat_id,
+                            document=file,
+                            caption=curr_caption,
+                            thumb=curr_thumb,
+                            reply_to_message_id=topic_id,
+                            parse_mode=curr_parse_mode,
+                            progress=progress_bar,
+                            progress_args=("╔══━⚡️Uploading...⚡️━══╗\n", edit, time.time())
+                        )
+                        break
+                    except FloodWait as fw:
+                        await asyncio.sleep(fw.value + 1)
+                    except Exception as de:
+                        err_str = str(de).upper()
+                        print(f"[UploadMedia] send_document attempt {d_attempt} notice: {de}")
+                        if curr_thumb:
+                            curr_thumb = None
+                            continue
+                        if curr_parse_mode:
+                            curr_parse_mode = None
+                            curr_caption = clean_surrogates(curr_caption)[:1000] if curr_caption else None
+                            continue
+                        break
+                if not dm:
+                    dm = await app.send_document(
+                        chat_id=target_chat_id,
+                        document=file,
+                        caption=None,
+                        thumb=None,
+                        reply_to_message_id=topic_id
+                    )
 
             # ✅ Fast log: copy already-uploaded message instead of re-uploading from disk
             log_file_msg = await dm.copy(LOG_GROUP)
@@ -892,6 +990,11 @@ async def get_msg(userbot: TelegramClient, sender: int, edit_id: int, msg_link: 
                 raise e
         
         if not msg or msg.service or msg.empty:
+            if edit:
+                try:
+                    await edit.delete()
+                except Exception:
+                    pass
             return
 
         # Apply filter checks in get_msg!
@@ -977,26 +1080,56 @@ async def get_msg(userbot: TelegramClient, sender: int, edit_id: int, msg_link: 
         await edit.edit("**>Downloading...Darling 😘**")
 
         # Download media
+        last_download_error = None
+        temp_dir = os.path.join("downloads", str(sender))
+        os.makedirs(temp_dir, exist_ok=True)
+
+        # Unique filename suffix prevents Windows file locking errors when same link is requested repeatedly
+        unique_file_name = f"{msg_id}_{int(time.time())}_{file_name}"
+        target_file_path = os.path.join(temp_dir, unique_file_name)
+
+        # Ensure userbot is connected; auto-recover if disconnected
+        if client != app and not getattr(client, "is_connected", False):
+            try:
+                from toxic.core.userbot_manager import get_or_create_userbot
+                fresh_ub = await get_or_create_userbot(sender)
+                if fresh_ub and getattr(fresh_ub, "is_connected", False):
+                    client = fresh_ub
+                    userbot = fresh_ub
+            except Exception as ub_err:
+                print(f"[DOWNLOAD] Reconnect userbot error: {ub_err}")
+
+        # Join the chat first to resolve username entity and prevent PeerIdInvalid / ChannelPrivate errors
+        if client and client != app and isinstance(chat, str) and not chat.startswith("-") and not chat.isdigit():
+            try:
+                await client.join_chat(chat)
+            except Exception:
+                pass
+
         try:
-            # unique directory for each user to prevent concurrency collisions
-            temp_dir = os.path.join("downloads", str(sender))
-            os.makedirs(temp_dir, exist_ok=True)
-            
-            # Join the chat first to resolve username entity and prevent PeerIdInvalid / ChannelPrivate errors
-            if client and client != app and isinstance(chat, str) and not chat.startswith("-") and not chat.isdigit():
-                try:
-                    await client.join_chat(chat)
-                except Exception:
-                    pass
-            
-            target_file_path = os.path.join(temp_dir, file_name)
             file = await client.download_media(
                 msg,
                 file_name=target_file_path,            
                 progress_args=("╔══━⚡️ Downloading ⚡️━══╗\n", edit, time.time()),
                 progress=progress_bar
             )
+        except FloodWait as fw:
+            last_download_error = f"FloodWait ({fw.value}s)"
+            print(f"[DOWNLOAD] FloodWait encountered: waiting {fw.value + 2}s...")
+            await asyncio.sleep(fw.value + 2)
+            try:
+                fresh_msg = await client.get_messages(chat, msg_id)
+                file = await client.download_media(
+                    fresh_msg or msg,
+                    file_name=target_file_path,
+                    progress_args=("╔══━⚡️ Retrying Download... ⚡️━══╗\n", edit, time.time()),
+                    progress=progress_bar
+                )
+            except Exception as fw_retry_err:
+                last_download_error = str(fw_retry_err)
+                file = None
         except FileReferenceExpired:
+            last_download_error = "FileReferenceExpired"
             print("[DOWNLOAD] FileReferenceExpired encountered! Refetching fresh message...")
             try:
                 if os.path.exists(target_file_path):
@@ -1014,10 +1147,33 @@ async def get_msg(userbot: TelegramClient, sender: int, edit_id: int, msg_link: 
                     )
             except Exception as ex:
                 print(f"[DOWNLOAD] Refetch download failed: {ex}")
+                last_download_error = str(ex)
                 file = None
         except Exception as e:
-            print(f"Download error: {e}")
-            file = None
+            last_download_error = str(e)
+            print(f"Download initial error: {e}")
+            # Robust auto-recovery: reconnect client if needed, refetch fresh message, and retry
+            try:
+                if client != app and not getattr(client, "is_connected", False):
+                    from toxic.core.userbot_manager import get_or_create_userbot
+                    fresh_ub = await get_or_create_userbot(sender)
+                    if fresh_ub and getattr(fresh_ub, "is_connected", False):
+                        client = fresh_ub
+                        userbot = fresh_ub
+
+                alt_file_path = os.path.join(temp_dir, f"retry_{msg_id}_{int(time.time())}_{file_name}")
+                fresh_msg = await client.get_messages(chat, msg_id)
+                if fresh_msg and not fresh_msg.empty:
+                    file = await client.download_media(
+                        fresh_msg,
+                        file_name=alt_file_path,
+                        progress_args=("╔══━⚡️ Retrying Download... ⚡️━══╗\n", edit, time.time()),
+                        progress=progress_bar
+                    )
+            except Exception as retry_e:
+                print(f"[DOWNLOAD] Auto-recovery retry error: {retry_e}")
+                last_download_error = str(retry_e)
+                file = None
         
         # Check if file downloaded is 0-byte file
         if file and os.path.exists(file) and os.path.getsize(file) == 0:
@@ -1037,6 +1193,7 @@ async def get_msg(userbot: TelegramClient, sender: int, edit_id: int, msg_link: 
                     )
             except Exception as ex:
                 print(f"[DOWNLOAD] 0 B Retry failed: {ex}")
+                last_download_error = str(ex)
                 file = None
 
         if not file or (os.path.exists(file) and os.path.getsize(file) == 0):
@@ -1044,7 +1201,8 @@ async def get_msg(userbot: TelegramClient, sender: int, edit_id: int, msg_link: 
             if getattr(msg, "has_protected_content", False) and not userbot:
                  await edit.edit("❌ **Protected Download Failed**\n\nThis content is protected and the shared userbot couldn't access it. Please **login with your own account** using /login to bypass this restriction.")
             else:
-                 await edit.edit(f"❌ **Download failed** - The file might be corrupted or the session has expired.\n\n**Error:** `{str(client.__class__.__name__)} session issue`")
+                 err_detail = f": `{last_download_error}`" if last_download_error else ""
+                 await edit.edit(f"❌ **Download failed** - The file might be corrupted, restricted, or connection dropped.\n\n**Error:** {err_detail or 'Download stream terminated'}")
             return
 
         caption = await get_final_caption(msg, sender)
@@ -1737,15 +1895,30 @@ def format_caption(original_caption, sender, custom_caption, filename=None):
     # Remove ALL @mentions
     original_caption = re.sub(r'@\w+', '', original_caption)
 
+    # Remove ALL WhatsApp links, channels, groups & promotional lines
+    original_caption = re.sub(r'(?im)^[^\n]*(?:whatsapp|wa\.me)[^\n]*$', '', original_caption)
+    original_caption = re.sub(r'(?i)https?://(?:www\.)?(?:chat\.)?whatsapp\.com/[^\s]+', '', original_caption)
+    original_caption = re.sub(r'(?i)(?:www\.)?(?:chat\.)?whatsapp\.com/[^\s]+', '', original_caption)
+    original_caption = re.sub(r'(?i)https?://wa\.me/[^\s]+', '', original_caption)
+    original_caption = re.sub(r'(?i)wa\.me/[^\s]+', '', original_caption)
+    original_caption = re.sub(r'(?i)https?://api\.whatsapp\.com/[^\s]+', '', original_caption)
+    original_caption = re.sub(r'(?i)[ \t\-_—>➤➢•*|~:👇👉]*whatsapp[\s\-_]*(?:link|channel|group|community)?[\s_:➤>–\-👇👉]*', '', original_caption)
+
     # Remove ALL URLs except YouTube
     original_caption = strip_links_except_youtube(original_caption)
 
-    # Replace "Extracted/Downloaded/Uploaded By" patterns
+    # Replace "Extracted/Downloaded/Uploaded By" patterns (with any leading emojis or spaces)
     original_caption = re.sub(
-        r'(?i)(📩|⏫)?\s*(Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*',
+        r'(?im)^[^\n]*(?:Extracted|Downloaded|Download|Uploaded|Upload|Forwarded|Powered|Saved|Managed|Source|Credit|Credits)[\s_]*By[\s_:➤>–\-]*[^\n]*$',
         '',
         original_caption
     )
+
+    # Clean leftover promo and trailing divider lines
+    original_caption = re.sub(r'(?im)^[ \t\-_—>➤➢•*|~:💫📥⏫📩⭐️⭐⚝✨🌟🖤🦋\s]*$', '', original_caption)
+    original_caption = original_caption.rstrip()
+    while re.search(r'(\n[ \t•·*═\-_—~─━]+)+$', original_caption):
+        original_caption = re.sub(r'(\n[ \t•·*═\-_—~─━]+)+$', '', original_caption).strip()
 
     # Remove markdown artifacts
     original_caption = re.sub(r'\*{3,}', '', original_caption)

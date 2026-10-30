@@ -24,27 +24,100 @@ from datetime import datetime as dt
 import asyncio, subprocess, re, os, time
 from PIL import Image
 async def chk_user(message, user_id):
+    from toxic.core.mongo.db import is_admin_or_owner
+    if is_admin_or_owner(user_id):
+        return 0
+    # Global Free Access Check (Batch / Free)
+    try:
+        from toxic.core.mongo.plans_db import is_global_batch_free
+        if await is_global_batch_free():
+            return 0
+    except Exception as e:
+        print(f"⚠️ is_global_batch_free check error: {e}")
+    # Separate check for paid/active standard premium plan
     user = await premium_users()
-    owner_list = OWNER_ID if isinstance(OWNER_ID, list) else [OWNER_ID]
     user_strings = [str(u) for u in user]
-    owner_strings = [str(o) for o in owner_list]
-    if str(user_id) in owner_strings or str(user_id) in user_strings:
+    if str(user_id) in user_strings:
         return 0
     else:
         return 1
 
 async def chk_mirror_user(user_id):
-    """Checks if a user has active Topic Mirroring plan (or is Owner/Sudo). Returns 0 if authorized, 1 if not."""
-    owner_list = OWNER_ID if isinstance(OWNER_ID, list) else [OWNER_ID]
-    owner_strings = [str(o) for o in owner_list]
-    if str(user_id) in owner_strings:
+    """Checks if a user has active Topic Mirroring plan (or is Owner/Sudo or Global Free Access is Active). Returns 0 if authorized, 1 if not."""
+    from toxic.core.mongo.db import is_admin_or_owner
+    if is_admin_or_owner(user_id):
         return 0
+    # Global Free Access Check (Topic Mirror)
+    try:
+        from toxic.core.mongo.plans_db import is_global_mirror_free
+        if await is_global_mirror_free():
+            return 0
+    except Exception as e:
+        print(f"⚠️ is_global_mirror_free check error: {e}")
+    # Separate check for paid/active topic mirror subscription
     from toxic.core.mongo.plans_db import mirror_premium_users
     mirror_users_list = await mirror_premium_users()
     mirror_user_strings = [str(u) for u in mirror_users_list]
     if str(user_id) in mirror_user_strings:
         return 0
-    return 1
+async def is_free_user(user_id: int) -> bool:
+    """Returns True if user has NO active paid plan, is not Admin/Owner."""
+    if not user_id:
+        return True
+
+    from toxic.core.mongo.db import is_admin_or_owner
+    if is_admin_or_owner(user_id):
+        return False
+
+    # Check direct DB with expiry validation for absolute accuracy
+    try:
+        from toxic.core.mongo.plans_db import check_premium, check_mirror_premium
+        p_doc = await check_premium(user_id)
+        if p_doc is not None:
+            return False
+        m_doc = await check_mirror_premium(user_id)
+        if m_doc is not None:
+            return False
+    except Exception as e:
+        print(f"Error checking user premium in db: {e}")
+
+    return True
+
+
+def get_upgrade_premium_card(user=None) -> tuple:
+    """Returns (card_text, inline_keyboard) for Upgrade to Premium message."""
+    import html
+    first_name = html.escape(getattr(user, "first_name", "User") or "User") if user else "User"
+    user_id = getattr(user, "id", "") if user else ""
+    user_mention = f"<a href='tg://user?id={user_id}'>{first_name}</a>" if user_id else first_name
+
+    text = (
+        "<blockquote>👑 <b>XTRACTOR PRO — PREMIUM ACCESS REQUIRED</b> 👑</blockquote>\n\n"
+        f"👋 <b>Hey {user_mention}!</b>\n"
+        "<blockquote>🚫 <b>Access Restricted: Free Account Detected</b>\n\n"
+        "Yeh bot aur iske premium features exclusive <b>Paid Members</b> ke liye reserved hain.\n"
+        "Aapke account par abhi koi active subscription activate nahi hai.</blockquote>\n\n"
+        "✨ <b>Upgrade to PRO to Unlock:</b>\n"
+        "• 📁 <b>Topic Mirror Forum Sync:</b> Clone entire supergroups with topics in 1-click\n"
+        "• 🪄 <b>Unlimited Bulk Batch:</b> Extract up to 5,000 files in one command\n"
+        "• 🚀 <b>Multi-Threaded Turbo Speed:</b> Zero wait time & high-speed downloads\n"
+        "• 🏷️ <b>Custom Captions & Thumbnails:</b> 100% clean files with no ads\n"
+        "• 🔒 <b>Restricted Content Access:</b> Private channels & forum groups supported\n\n"
+        "👉 <i>Subscription lene ke liye niche diye gaye buttons se Plans check karein ya Admin se contact karein:</i>"
+    )
+
+    buttons = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("💎 View Pricing & Plans", callback_data="see_plan"),
+            InlineKeyboardButton("💬 Buy from Admin", url="https://t.me/CrazyxDeveloper_Bot")
+        ],
+        [
+            InlineKeyboardButton("⌛ Check My Subscription", callback_data="check_my_sub"),
+            InlineKeyboardButton("📘 User Guide", callback_data="guide_page_1")
+        ]
+    ])
+
+    return text, buttons
 async def gen_link(app,chat_id):
    link = await app.export_chat_invite_link(chat_id)
    return link
@@ -334,7 +407,12 @@ def optimize_thumbnail(image_path):
         return abs_path
     except Exception as e:
         print(f"[ERROR] Failed to optimize thumbnail {image_path}: {e}")
-        return os.path.abspath(image_path) if image_path else None
+        try:
+            if image_path and os.path.exists(image_path):
+                os.remove(image_path)
+        except Exception:
+            pass
+        return None
 
 # REPLACE screenshot() function in toxic/core/func.py (Line 221-257)
 
@@ -668,4 +746,36 @@ def add_pdf_watermark(pdf_path, watermark_text):
             except Exception:
                 pass
         return pdf_path
+
+
+def parse_target_chat(input_str: str) -> str:
+    """
+    Parses a target chat string, channel link, or topic message link into a valid format.
+    Examples:
+      - '-100123456789' -> '-100123456789'
+      - 'https://t.me/c/123456789/430/431' -> '-100123456789/430'
+      - 'https://t.me/c/123456789/5' -> '-100123456789'
+    """
+    if not input_str:
+        return ""
+
+    input_str = str(input_str).strip()
+
+    if "t.me/c/" in input_str or "telegram.me/c/" in input_str:
+        parts = [p for p in input_str.split("/") if p]
+        if "c" in parts:
+            c_idx = parts.index("c")
+            if c_idx + 1 < len(parts):
+                raw_id = parts[c_idx + 1]
+                chat_id = f"-100{raw_id}" if not raw_id.startswith("-") else raw_id
+                
+                remaining = parts[c_idx + 2:]
+                if len(remaining) >= 2:
+                    topic_id = remaining[0]
+                    return f"{chat_id}/{topic_id}"
+                elif len(remaining) == 1:
+                    return f"{chat_id}"
+                return chat_id
+
+    return input_str
 

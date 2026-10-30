@@ -51,8 +51,16 @@ async def delete_session_files(user_id: int) -> bool:
             pass
 
     try:
-        from toxic.core.mongo.db import db as user_data_db
-        await user_data_db.update_one({"_id": user_id}, {"$unset": {"session": ""}})
+        from toxic.core.userbot_manager import close_userbot
+        await close_userbot(user_id)
+    except Exception:
+        pass
+
+    try:
+        from toxic.core.userbot_manager import get_current_bot_username
+        from toxic.core.mongo.db import remove_user_session
+        bot_uname = get_current_bot_username()
+        await remove_user_session(user_id, bot_name=bot_uname)
     except Exception:
         pass
 
@@ -126,18 +134,24 @@ async def generate_session(client, message: Message):
     if joined == 1:
         return
 
-    # Check if user is already logged in
-    user_data = await db.get_data(user_id) or {}
-    session_string = user_data.get("session")
+    # Check if user is already logged in for THIS specific bot
+    try:
+        from toxic.core.userbot_manager import get_current_bot_username
+        bot_uname = get_current_bot_username()
+    except Exception:
+        bot_uname = "default_bot"
+
+    session_string = await db.get_user_session(user_id, bot_name=bot_uname, allow_fallback=False)
 
     if session_string:
         status_card = (
             "📱 <b>USERBOT ACCOUNT CONTROL PANEL</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"👤 <b>User ID:</b> <code>{user_id}</code>\n"
+            f"🤖 <b>Bot:</b> <code>@{bot_uname}</code>\n"
             "⚡ <b>Session Status:</b> <code>CONNECTED & ACTIVE ✅</code>\n"
-            "🛡️ <b>Database Security:</b> <code>Encrypted Session String</code>\n\n"
-            "ℹ️ <i>Your Userbot session is active and ready to access private/restricted source channels for cloning!</i>\n\n"
+            "🛡️ <b>Database Security:</b> <code>Dedicated Bot Session</code>\n\n"
+            "ℹ️ <i>Your Userbot session is active and dedicated for this bot. You can use separate Telegram accounts on each bot!</i>\n\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             "Use the control buttons below to manage your account session:"
         )
@@ -148,7 +162,25 @@ async def generate_session(client, message: Message):
         )
         return
 
-    # If not logged in, proceed to login flow directly
+    # If not logged in on this bot, check if another bot has a session to show helpful notice
+    other_bot_session = await db.get_user_session(user_id, bot_name=bot_uname, allow_fallback=True)
+    if other_bot_session:
+        notice_card = (
+            f"📱 <b>USERBOT SETUP FOR @{bot_uname}</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "ℹ️ <b>Multi-Bot Account Support:</b>\n"
+            "Aapka dusre bot me already ek account logged in hai.\n"
+            "Is bot (@" + bot_uname + ") me aap <b>koi bhi alag number</b> se login kar sakte hain!\n\n"
+            "👉 Niche <b>📲 Start Userbot Login</b> par click karke is bot ke liye alag account number connect karein:"
+        )
+        await message.reply_text(
+            notice_card,
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_login_status_keyboard(is_logged_in=False)
+        )
+        return
+
+    # If completely not logged in anywhere, proceed to login flow directly
     await start_login_flow(client, user_id, message)
 
 
@@ -162,6 +194,11 @@ async def login_callback_handler(client, query: CallbackQuery):
         return
 
     if data == "login_logout_cb":
+        try:
+            from toxic.core.userbot_manager import close_userbot
+            await close_userbot(user_id)
+        except Exception:
+            pass
         await delete_session_files(user_id)
         await query.answer("🚪 Session logged out successfully!", show_alert=True)
         logout_card = (
@@ -217,7 +254,7 @@ async def start_login_flow(client, user_id: int, message_or_query):
 
     sending_msg = await app.send_message(user_id, "📲 <b>Connecting to Telegram servers & sending OTP...</b>", parse_mode=ParseMode.HTML)
     
-    ub_client = Client(f"session_{user_id}", api_id, api_hash, max_concurrent_transmissions=16)
+    ub_client = Client(f"session_{user_id}", api_id, api_hash, max_concurrent_transmissions=1, sleep_threshold=60)
 
     try:
         await ub_client.connect()
@@ -311,33 +348,40 @@ async def start_login_flow(client, user_id: int, message_or_query):
             await two_step_msg.reply_text(f"❌ <b>2FA Authentication Error:</b> `{pwd_err}`", parse_mode=ParseMode.HTML)
             return
 
-    # Export session string and save in MongoDB
+    # Export session string and save in MongoDB partitioned for THIS bot
     string_session = await ub_client.export_session_string()
-    await db.set_session(user_id, string_session)
+    try:
+        from toxic.core.userbot_manager import get_current_bot_username
+        bot_uname = get_current_bot_username()
+    except Exception:
+        bot_uname = "default_bot"
+    await db.set_session(user_id, string_session, bot_name=bot_uname)
 
     try:
         await ub_client.disconnect()
     except Exception:
         pass
 
-    # Automatically initialize View-Once background listener for this account
+    # Close any lingering old userbot first, then start unified userbot for this bot
     try:
-        from toxic.modules.view_once import register_view_once_listener
-        asyncio.create_task(register_view_once_listener(user_id, string_session))
+        from toxic.core.userbot_manager import close_userbot, get_or_create_userbot
+        await close_userbot(user_id)
+        asyncio.create_task(get_or_create_userbot(user_id, string_session))
     except Exception as vo_err:
-        print(f"Failed to auto-start view once listener on login: {vo_err}")
+        print(f"Failed to auto-start unified userbot on login: {vo_err}")
 
     success_card = (
         "🎉 <b>USERBOT LOGIN SUCCESSFUL!</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"👤 <b>Authenticated User:</b> <code>{user_id}</code>\n"
+        f"🤖 <b>Dedicated For Bot:</b> <code>@{bot_uname}</code>\n"
         "⚡ <b>Session Status:</b> <code>SAVED IN DATABASE ✅</code>\n\n"
-        "🚀 <b>Unlocked Capabilities:</b>\n"
+        "🚀 <b>Multi-Bot Parallel Capabilities Unlocked:</b>\n"
+        "• Ab aap is bot aur baaki bots se <b>ek sath alag-alag groups</b> me bina session conflict ke simultaneous fast clone kar sakte hain! ⚡\n"
         "• 📁 Topic-to-Topic Supergroup Cloning\n"
         "• 📥 Restricted & Private Content Downloads\n"
-        "• 🔥 <b>Automatic View-Once Media Saver Active</b> ⚡\n"
-        "• ⚡ Zero-Bandwidth High-Speed Server Forwarding\n\n"
-        "<i>Use <code>/viewonce</code> to manage self-destructing media saver settings!</i>"
+        "• 🔥 <b>Automatic View-Once Media Saver Active</b> ⚡\n\n"
+        "<i>Ready to mirror! Send /mirror to start cloning.</i>"
     )
     await app.send_message(
         user_id,
