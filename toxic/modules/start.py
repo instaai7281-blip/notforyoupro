@@ -31,12 +31,12 @@ import time
 
 _last_bio_prompt_time = {}
 
-@app.on_message(filters.private & ~filters.service, group=-2)
+@app.on_message(~filters.service, group=-2)
 async def free_user_strict_guard(client, message: Message):
     """
-    Completely silences and turns off all command replies for Free Users.
-    The ONLY message sent from the bot's side is the Bio Verification message!
-    Admins and paid Premium users can interact normally.
+    Completely silences and turns off all command and message replies for Free Users.
+    Only Admins and Paid Premium users receive responses from the bot.
+    The bot remains 100% clean and silent for free users in both Private chats and Groups.
     """
     if not message.from_user:
         return
@@ -49,28 +49,16 @@ async def free_user_strict_guard(client, message: Message):
         return
 
     if await is_free_user(user_id):
-        # Stop all operational commands/start handler propagation
+        # Stop all operational commands/start handler propagation silently
         message.stop_propagation()
-
-        # Send ONLY the official Bio Verification message (with 3s debounce per user to prevent flood)
-        now = time.time()
-        last_sent = _last_bio_prompt_time.get(user_id, 0)
-        if (now - last_sent) >= 3:
-            _last_bio_prompt_time[user_id] = now
-            try:
-                from toxic.core.bio_check import send_bio_verification_prompt
-                await send_bio_verification_prompt(client, message)
-            except Exception as e:
-                print(f"⚠️ Error sending bio prompt to free user {user_id}: {e}")
         return
 
 
 @app.on_callback_query(group=-2)
 async def free_user_strict_callback_guard(client, query: CallbackQuery):
     """
-    Guards callback queries for Free Users:
-    Allows Bio verification and Plan viewing callbacks so free users can complete verification or buy plans.
-    Silences all other operational buttons.
+    Silences all callback queries for Free Users so free users cannot trigger any bot actions.
+    Admins and Paid Premium users can interact normally.
     """
     if not query.from_user:
         return
@@ -83,22 +71,8 @@ async def free_user_strict_callback_guard(client, query: CallbackQuery):
         return
 
     if await is_free_user(user_id):
-        data = query.data or ""
-        allowed_prefixes = (
-            "verify_user_bio",
-            "bio_terms_info",
-            "back_to_bio_prompt",
-            "see_plan",
-            "plans",
-            "buy_plan",
-            "check_subscription",
-            "prem_"
-        )
-        if any(data.startswith(p) for p in allowed_prefixes):
-            return  # Allow bio verification and plan purchase callbacks
-
         try:
-            await query.answer("🔒 Access Denied! Please complete Bio verification or upgrade to Premium.", show_alert=True)
+            await query.answer()
         except Exception:
             pass
         query.stop_propagation()

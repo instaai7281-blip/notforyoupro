@@ -71,7 +71,9 @@ async def is_free_user(user_id: int) -> bool:
 
     # Check direct DB with expiry validation for absolute accuracy
     try:
-        from toxic.core.mongo.plans_db import check_premium, check_mirror_premium
+        from toxic.core.mongo.plans_db import check_premium, check_mirror_premium, is_global_batch_free, is_global_mirror_free
+        if await is_global_batch_free() or await is_global_mirror_free():
+            return False
         p_doc = await check_premium(user_id)
         if p_doc is not None:
             return False

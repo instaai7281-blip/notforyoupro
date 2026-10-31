@@ -126,15 +126,8 @@ async def single_link(_, message):
         )
         return
 
-    # Check freemium limits
-    if await chk_user(message, user_id) == 1 and FREEMIUM_LIMIT == 0 and user_id not in OWNER_ID:
-        from toxic.core.func import get_upgrade_premium_card
-        text, kb = get_upgrade_premium_card(message.from_user)
-        photo_url = "https://freeimage.host/i/n04TxVa"
-        try:
-            await message.reply_photo(photo=photo_url, caption=text, reply_markup=kb, parse_mode=ParseMode.HTML)
-        except Exception:
-            await message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
+    # Check freemium limits - completely silent for free users
+    if await chk_user(message, user_id) == 1 and user_id not in OWNER_ID:
         return
 
     # Check cooldown
