@@ -363,19 +363,21 @@ async def range_forward_command(client: Client, message: types.Message):
         )
 
         try:
-            if tgt_topic_id:
-                await app.send_message(
-                    chat_id=tgt_chat_id,
-                    text=completion_text,
-                    parse_mode=ParseMode.HTML,
-                    reply_to_message_id=tgt_topic_id
-                )
-            else:
-                await app.send_message(
-                    chat_id=tgt_chat_id,
-                    text=completion_text,
-                    parse_mode=ParseMode.HTML
-                )
+            from toxic.core.mongo.db import can_send_completion_msg
+            if await can_send_completion_msg(user_id):
+                if tgt_topic_id:
+                    await app.send_message(
+                        chat_id=tgt_chat_id,
+                        text=completion_text,
+                        parse_mode=ParseMode.HTML,
+                        reply_to_message_id=tgt_topic_id
+                    )
+                else:
+                    await app.send_message(
+                        chat_id=tgt_chat_id,
+                        text=completion_text,
+                        parse_mode=ParseMode.HTML
+                    )
         except Exception as send_tgt_err:
             print(f"[RangeForwarder] Failed sending completion message to target: {send_tgt_err}")
 

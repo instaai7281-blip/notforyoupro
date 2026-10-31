@@ -3863,6 +3863,10 @@ async def run_single_link_mirror(
             f"⏱ <b>Time Taken:</b> <code>{TimeFormatter(int(elapsed_total)*1000)}</code></blockquote>"
         )
         try:
+            from toxic.core.mongo.db import can_send_completion_msg
+            if not await can_send_completion_msg(user_id):
+                print(f"[SingleLinkMirror] Completion message skipped for user {user_id} (not permitted)")
+                return True
             target_thread_id = None if (tgt_topic_id in (None, 1)) else int(tgt_topic_id)
             # 1. Send directly inside the specific target topic thread if applicable
             if target_thread_id:
@@ -5061,9 +5065,10 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
                         )
                         await _update_status(status_text, reply_markup=control_kb)
 
-                # Send Completion Message DIRECTLY into the specific target topic thread where content was synced
+                # Send Completion Message DIRECTLY into the specific target topic thread where content was synced (Admin/Approved Only)
+                from toxic.core.mongo.db import can_send_completion_msg
                 effective_thread = None if (tgt_topic_id in (None, 1)) else int(tgt_topic_id)
-                if effective_thread and (topic_stats[src_topic_id]["copied"] > 0 or topic_stats[src_topic_id]["skipped"] > 0):
+                if effective_thread and (topic_stats[src_topic_id]["copied"] > 0 or topic_stats[src_topic_id]["skipped"] > 0) and await can_send_completion_msg(user_id):
                     try:
                         t_copied = topic_stats[src_topic_id]["copied"]
                         t_skipped = topic_stats[src_topic_id]["skipped"]
@@ -5148,8 +5153,12 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
             except Exception as log_err:
                 print(f"[TopicMirror] Finish log notice: {log_err}")
 
-        # Send Clean Completion Message to Target Forum Group (General Topic only)
+        # Send Clean Completion Message to Target Forum Group (General Topic only - Admin/Approved Only)
         try:
+            from toxic.core.mongo.db import can_send_completion_msg
+            if not await can_send_completion_msg(user_id):
+                print(f"[TopicMirror] Target group completion message skipped for user {user_id} (not permitted)")
+                return
             elapsed_total = time.time() - start_overall_time
             time_str = TimeFormatter(int(elapsed_total) * 1000)
 
@@ -6286,3 +6295,62 @@ async def execute_target_groups_broadcast(client: Client, query: CallbackQuery):
         await status_msg.edit_text(summary_text, parse_mode=ParseMode.HTML, reply_markup=back_kb)
     except Exception:
         await app.send_message(user_id, summary_text, parse_mode=ParseMode.HTML, reply_markup=back_kb)
+
+# ────── Completion Message Permission Toggle (Admin / Owner Only) ──────
+@app.on_message(filters.command(["completion", "setcompletion", "completeboss", "allowcompletion"]) & filters.private)
+async def toggle_completion_msg_cmd(client, message: Message):
+    from toxic.core.mongo.db import is_admin_or_owner, can_send_completion_msg, set_user_completion_msg
+    sender_id = message.from_user.id if message.from_user else 0
+    if not is_admin_or_owner(sender_id):
+        return
+
+    args = message.text.split()[1:]
+    if not args:
+        help_msg = (
+            "👑 <b>Admin Control: Completion Message ('Complete Ho Gaya Boss')</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "By default, this message is sent <b>ONLY</b> for Owner and Admins.\n"
+            "For other paid users, it is <b>OFF</b> unless specifically approved!\n\n"
+            "👉 <b>Commands:</b>\n"
+            "• <code>/completion &lt;user_id&gt; on</code> — Allow for user\n"
+            "• <code>/completion &lt;user_id&gt; off</code> — Block/Disallow for user\n"
+            "• <code>/completion &lt;user_id&gt;</code> — Check current status\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        )
+        await message.reply(help_msg, parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        target_uid = int(args[0])
+    except ValueError:
+        await message.reply("⚠️ Invalid User ID! Example: `/completion 123456789 on`")
+        return
+
+    if len(args) == 1:
+        status = await can_send_completion_msg(target_uid)
+        st_text = "✅ <b>ALLOWED (Active)</b>" if status else "🚫 <b>DISABLED (Off)</b>"
+        await message.reply(
+            f"👤 <b>User:</b> <code>{target_uid}</code>\n"
+            f"📢 <b>'Complete Ho Gaya Boss' Status:</b> {st_text}\n\n"
+            f"<i>To change: <code>/completion {target_uid} on</code> or <code>off</code></i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    action = args[1].lower()
+    if action in ("on", "enable", "yes", "true", "1", "allow"):
+        await set_user_completion_msg(target_uid, True)
+        await message.reply(
+            f"✅ <b>Access Granted!</b>\n"
+            f"User <code>{target_uid}</code> will now get <i>'Complete Ho Gaya Boss'</i> messages in their topics/groups.",
+            parse_mode=ParseMode.HTML
+        )
+    elif action in ("off", "disable", "no", "false", "0", "block", "disallow"):
+        await set_user_completion_msg(target_uid, False)
+        await message.reply(
+            f"🚫 <b>Access Revoked / Disabled!</b>\n"
+            f"User <code>{target_uid}</code> will <b>NOT</b> receive <i>'Complete Ho Gaya Boss'</i> messages in any group or topic.",
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await message.reply("⚠️ Unknown action! Use `on` or `off`. Example: `/completion 123456789 off`")

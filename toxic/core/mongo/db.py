@@ -972,3 +972,35 @@ async def reset_c2t_checkpoint(src_chat_id, tgt_chat_id):
         await c2t_db.delete_one({"_id": _c2t_key(src_chat_id, tgt_chat_id)})
     except Exception:
         pass
+
+
+# ─── Completion Message ("Complete Ho Gaya Boss") Permission ───
+completion_perm_db = mongo.user_data.completion_permissions
+
+async def can_send_completion_msg(user_id: int) -> bool:
+    """
+    Checks if 'Complete Ho Gaya Boss' completion message should be sent to groups/topics.
+    - Owner and Admins: True by default (unless explicitly disabled).
+    - Other Paid Users: False by default (only True if specifically approved by Admin/Owner).
+    """
+    if not user_id:
+        return False
+    if is_admin_or_owner(user_id):
+        doc = await completion_perm_db.find_one({"_id": int(user_id)})
+        if doc and "enabled" in doc:
+            return bool(doc["enabled"])
+        return True
+
+    # Regular paid users: strictly False unless explicitly approved by Admin
+    doc = await completion_perm_db.find_one({"_id": int(user_id)})
+    if doc:
+        return bool(doc.get("enabled", False))
+    return False
+
+async def set_user_completion_msg(user_id: int, enabled: bool):
+    """Admin/Owner direct access to turn ON/OFF completion message for a specific user ID."""
+    await completion_perm_db.update_one(
+        {"_id": int(user_id)},
+        {"$set": {"user_id": int(user_id), "enabled": bool(enabled), "updated_at": datetime.datetime.utcnow()}},
+        upsert=True
+    )
