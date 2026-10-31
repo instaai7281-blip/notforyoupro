@@ -569,20 +569,18 @@ def extract_caption_content_ids(text: str) -> set:
     return extracted_ids
 
 
-async def scan_target_topic_content_ids(app, userbot, tgt_chat_id: int, tgt_topic_id: int, max_limit: int = 1500) -> set:
+async def scan_target_topic_content_ids(app, userbot, tgt_chat_id: int, tgt_topic_id: int, max_limit: int = 100) -> set:
     """
     Scans existing target topic messages to extract all already-synced caption content IDs
     (e.g., PDF ID, Video ID, etc.) for robust deduplication & seamless continuation.
+    Uses userbot only (bots cannot call get_discussion_replies) with rapid 100 limit.
     """
     synced_ids = set()
     if not tgt_chat_id or not tgt_topic_id:
         return synced_ids
 
-    clients_to_try = []
-    if app:
-        clients_to_try.append(app)
-    if userbot and userbot not in clients_to_try:
-        clients_to_try.append(userbot)
+    # Telegram Bots CANNOT use get_discussion_replies (400 BOT_METHOD_INVALID); use userbot only
+    clients_to_try = [userbot] if userbot else []
 
     for client in clients_to_try:
         try:
@@ -1035,7 +1033,14 @@ async def get_all_source_forum_topics(client, src_chat_id: int, fallback_client=
     """
     source_topics = []
     seen_ids = set()
-    clients_to_try = [c for c in [client, fallback_client] if c]
+    # Prioritize userbot over bot for topic replies (bots cannot use get_discussion_replies)
+    clients_to_try = []
+    if fallback_client and not getattr(fallback_client, "is_bot", False) and getattr(fallback_client, "is_connected", False):
+        clients_to_try.append(fallback_client)
+    if client and client not in clients_to_try:
+        clients_to_try.append(client)
+    if fallback_client and fallback_client not in clients_to_try:
+        clients_to_try.append(fallback_client)
 
     for cl in clients_to_try:
         # 1. Primary Strategy: Raw RPC GetForumTopics with pagination
@@ -1385,7 +1390,9 @@ async def resilient_send_media(
     height: int = None,
     performer: str = None,
     title: str = None,
-    has_spoiler: bool = False
+    has_spoiler: bool = False,
+    progress = None,
+    progress_args: tuple = ()
 ):
     """
     Sends media with multi-stage fallback to guarantee zero failures:
@@ -1418,7 +1425,9 @@ async def resilient_send_media(
                             parse_mode=curr_parse_mode,
                             supports_streaming=True,
                             has_spoiler=has_spoiler,
-                            message_thread_id=eff_thread
+                            message_thread_id=eff_thread,
+                            progress=progress,
+                            progress_args=progress_args
                         )
                     except FloodWait as fw:
                         print(f"[TopicMirror] Upload FloodWait {fw.value}s. Sleeping...")
@@ -1458,7 +1467,9 @@ async def resilient_send_media(
                             thumb=curr_thumb,
                             reply_to_message_id=reply_to_message_id,
                             message_thread_id=eff_thread,
-                            parse_mode=curr_parse_mode
+                            parse_mode=curr_parse_mode,
+                            progress=progress,
+                            progress_args=progress_args
                         )
                     except FloodWait as fw:
                         print(f"[TopicMirror] Upload FloodWait {fw.value}s. Sleeping...")
@@ -1517,7 +1528,9 @@ async def resilient_send_media(
                             thumb=curr_thumb,
                             reply_to_message_id=reply_to_message_id,
                             message_thread_id=eff_thread,
-                            parse_mode=curr_parse_mode
+                            parse_mode=curr_parse_mode,
+                            progress=progress,
+                            progress_args=progress_args
                         )
                     except FloodWait as fw:
                         await asyncio.sleep(fw.value + 1)
@@ -1546,7 +1559,7 @@ async def resilient_send_media(
     return await client.send_document(chat_id=chat_id, document=file_path, caption=curr_caption, reply_to_message_id=reply_to_message_id)
 
 
-async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_topic_id, msg, user_id: int, is_general_topic: bool = False, src_client=None, is_public: bool = False):
+async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_topic_id, msg, user_id: int, is_general_topic: bool = False, src_client=None, is_public: bool = False, progress_cb=None):
     """
     Transfers a single message using the bot-only pipeline:
       - All messages in target group are strictly sent by `app` (real bot).
@@ -1861,9 +1874,17 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                     except Exception as ref_err:
                         print(f"[Transfer] Refetch fresh msg notice: {ref_err}")
 
+                async def _dl_prog(current, total):
+                    if progress_cb:
+                        try:
+                            await progress_cb(current, total, "⬇️ Downloading")
+                        except Exception:
+                            pass
+
                 temp_file = await dl_client.download_media(
                     curr_msg,
-                    file_name=f"{temp_dir}/"
+                    file_name=f"{temp_dir}/",
+                    progress=_dl_prog if progress_cb else None
                 )
                 if temp_file and os.path.isfile(temp_file) and os.path.getsize(temp_file) > 0:
                     break
@@ -1994,11 +2015,19 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
 
             has_spoiler = get_user_spoiler_preference(user_id)
 
+            async def _up_prog(current, total):
+                if progress_cb:
+                    try:
+                        await progress_cb(current, total, "⬆️ Uploading")
+                    except Exception:
+                        pass
+
             sent_media = await resilient_send_media(
                 client=app,
                 chat_id=tgt_chat_id,
                 media_type="video",
                 file_path=temp_file,
+                progress=_up_prog if progress_cb else None,
                 caption=caption_html,
                 thumb=thumb_path,
                 reply_to_message_id=effective_tgt_topic_id,
@@ -2048,7 +2077,8 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                 caption=caption_html,
                 thumb=thumb_path,
                 reply_to_message_id=effective_tgt_topic_id,
-                message_thread_id=effective_tgt_topic_id
+                message_thread_id=effective_tgt_topic_id,
+                progress=_up_prog if progress_cb else None
             )
         elif msg.photo:
             has_spoiler = get_user_spoiler_preference(user_id)
@@ -4842,6 +4872,21 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
                 last_edit_time = time.time()
                 topic_start_time = time.time()
 
+                # Immediately clear "Scanning..." and show active extraction card!
+                active_start_card = (
+                    f"<blockquote><b>⚡️ 𝗫𝗧𝗥𝗔𝗖𝗧𝗜𝗡𝗚 𝗧𝗢𝗣𝗜𝗖𝗦...</b></blockquote>\n\n"
+                    f"📁 <b>Topic [{current_topic_index}/{total_topics_count}]:</b> <code>{topic_title}</code>\n"
+                    f"📥 <b>Target:</b> <code>{tgt_title}</code>\n\n"
+                    f"📊 <b>Progress:</b> [▰▱▱▱▱▱▱▱▱▱] 0%\n"
+                    f"🔢 <b>Pending:</b> <code>1/{total_msgs_in_topic} messages</code>\n"
+                    f"📥 <b>Action:</b> <code>Transferring Message 1...</code>\n"
+                    f"🚀 <b>Speed:</b> <code>Turbo Mode ⚡</code>\n"
+                    f"⏳ <b>ETA:</b> <code>Calculating...</code>\n\n"
+                    f"✅ Downloaded: {overall_copied} | ⏩ Skipped: {overall_skipped}\n"
+                    f"❌ Failed: {overall_failed}"
+                )
+                await _update_status(active_start_card, reply_markup=control_kb)
+
                 for idx, msg in enumerate(messages_to_copy, 1):
                     # Check cancellation or skip signal
                     current_state = active_mirrors.get(user_id, {})
@@ -4878,6 +4923,36 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
                         try:
                             await ensure_userbot_connected(userbot)
                             is_gen = (src_topic_id == 1)
+                            last_ui_edit = 0
+
+                            async def msg_prog_cb(cur, tot, phase_name):
+                                nonlocal last_ui_edit, last_edit_time
+                                n = time.time()
+                                if (n - last_ui_edit) < 2.5 and cur < tot:
+                                    return
+                                last_ui_edit = n
+                                last_edit_time = n
+
+                                f_pct = int((cur / tot) * 100) if tot > 0 else 0
+                                f_bar = "▰" * int(f_pct // 10) + "▱" * (10 - int(f_pct // 10))
+                                
+                                top_elapsed = n - topic_start_time
+                                spd_bytes = (topic_copied_bytes + cur) / top_elapsed if top_elapsed > 0 else 0
+                                spd_txt = f"{humanbytes(spd_bytes)}/s" if spd_bytes > 1024 else f"{(idx / top_elapsed):.2f} msg/s" if top_elapsed > 0 else "Calculating..."
+                                
+                                live_text = (
+                                    f"<blockquote><b>⚡️ 𝗫𝗧𝗥𝗔𝗖𝗧𝗜𝗡𝗚 𝗧𝗢𝗣𝗜𝗖𝗦...</b></blockquote>\n\n"
+                                    f"📁 <b>Topic [{current_topic_index}/{total_topics_count}]:</b> <code>{topic_title}</code>\n"
+                                    f"📥 <b>Target:</b> <code>{tgt_title}</code>\n\n"
+                                    f"📊 <b>File Progress:</b> [{f_bar}] {f_pct}%\n"
+                                    f"🔢 <b>Message:</b> <code>{idx}/{total_msgs_in_topic}</code>\n"
+                                    f"📥 <b>Action:</b> <code>{phase_name} ({humanbytes(cur)} / {humanbytes(tot)})</code>\n"
+                                    f"🚀 <b>Speed:</b> <code>{spd_txt}</code>\n\n"
+                                    f"✅ Downloaded: {overall_copied} | ⏩ Skipped: {overall_skipped}\n"
+                                    f"❌ Failed: {overall_failed}"
+                                )
+                                await _update_status(live_text, reply_markup=control_kb)
+
                             success, method, sent_msg_id = await transfer_single_message(
                                 userbot=userbot,
                                 app=app,
@@ -4887,7 +4962,8 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
                                 msg=msg,
                                 user_id=user_id,
                                 is_general_topic=is_gen,
-                                src_client=src_client
+                                src_client=src_client,
+                                progress_cb=msg_prog_cb
                             )
                             if success or method in ("service_skipped", "skipped_filter"):
                                 break

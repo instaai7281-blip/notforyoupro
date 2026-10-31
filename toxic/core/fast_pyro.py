@@ -152,7 +152,7 @@ def patch_pyrogram_downloader():
                             break
 
                         # Gentle pacing (0.15s) avoids zero-delay bursts that trigger Telegram DC 15s/16s FloodWait penalty loops!
-                        await asyncio.sleep(0.15)
+                        await asyncio.sleep(0.04)
 
                         r = await session.invoke(
                             raw.functions.upload.GetFile(
@@ -233,7 +233,7 @@ def patch_pyrogram_downloader():
                             if len(chunk) < chunk_size or current >= total:
                                 break
 
-                            await asyncio.sleep(0.1)
+                            await asyncio.sleep(0.03)
                     finally:
                         await cdn_session.stop()
             finally:
