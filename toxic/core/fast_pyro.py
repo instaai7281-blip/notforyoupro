@@ -121,7 +121,7 @@ def patch_pyrogram_downloader():
                         offset=offset_bytes,
                         limit=chunk_size
                     ),
-                    sleep_threshold=30
+                    sleep_threshold=60
                 )
 
                 if isinstance(r, raw.types.upload.File):
@@ -151,13 +151,16 @@ def patch_pyrogram_downloader():
                         if len(chunk) < chunk_size or current >= total:
                             break
 
+                        # Gentle pacing (0.15s) avoids zero-delay bursts that trigger Telegram DC 15s/16s FloodWait penalty loops!
+                        await asyncio.sleep(0.15)
+
                         r = await session.invoke(
                             raw.functions.upload.GetFile(
                                 location=location,
                                 offset=offset_bytes,
                                 limit=chunk_size
                             ),
-                            sleep_threshold=30
+                            sleep_threshold=60
                         )
 
                 elif isinstance(r, raw.types.upload.FileCdnRedirect):
@@ -229,6 +232,8 @@ def patch_pyrogram_downloader():
 
                             if len(chunk) < chunk_size or current >= total:
                                 break
+
+                            await asyncio.sleep(0.1)
                     finally:
                         await cdn_session.stop()
             finally:
